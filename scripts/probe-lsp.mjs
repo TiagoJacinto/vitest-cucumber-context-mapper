@@ -55,6 +55,13 @@ server.on('exit', (code, signal) => {
 });
 const rootUri = pathToFileURL(process.cwd() + '/').href;
 const uri = path => new URL(path, rootUri).href;
+const ordinaryExample = `import { expect } from 'vitest';
+import { run, scenarios } from './checkout.feature';
+run(scenarios.buyAnItem
+  .given('the basket total is 12.5')(() => 12.5)
+  .when('checkout is calculated')(total => total)
+  .then('the order total is 12.5')(total => { expect(total).toBe(12.5); }));
+`;
 const positionAt = (text, offset) => {
   const before = text.slice(0, offset).split('\n');
   return { line: before.length - 1, character: before.at(-1).length };
@@ -78,7 +85,7 @@ try {
   console.log('initialize: ' + JSON.stringify(initialized.serverInfo));
   send({ method: 'initialized', params: {} });
   for (const [path, languageId] of [['example/checkout.test.ts', 'typescript'], ['example/checkout.feature', 'gherkin']]) {
-    send({ method: 'textDocument/didOpen', params: { textDocument: { uri: uri(path), languageId, version: 1, text: readFileSync(path, 'utf8') } } });
+    send({ method: 'textDocument/didOpen', params: { textDocument: { uri: uri(path), languageId, version: 1, text: path.endsWith('.test.ts') ? ordinaryExample : readFileSync(path, 'utf8') } } });
   }
   const diagnostic = await request('textDocument/diagnostic', { textDocument: { uri: uri('example/checkout.feature') } });
   console.log('feature diagnostic: ' + JSON.stringify(diagnostic));
@@ -91,7 +98,7 @@ try {
   console.log('mapped registrations: ' + JSON.stringify(registrations.filter(registration => registration.id.startsWith('content-mapper')).map(registration => ({ id: registration.id, method: registration.method, selector: registration.registerOptions?.documentSelector }))));
   assert.deepEqual(diagnostic.items, []);
   assert.deepEqual(specDiagnostic.items, []);
-  const spec = readFileSync('example/checkout.test.ts', 'utf8');
+  const spec = ordinaryExample;
   const feature = readFileSync('example/checkout.feature', 'utf8');
   const builderHover = await request('textDocument/hover', {
     textDocument: { uri: uri('example/checkout.test.ts') },
@@ -127,13 +134,13 @@ try {
   change('example/checkout.test.ts', 5, spec);
   console.log('consumer autocomplete: verified scenarios, initial given without when, and next Given literal');
 
-  const following = spec + '\nvoid scenarios.buyAnItem.given("the basket total is 12.5")(Effect.void).';
+  const following = spec + '\nvoid scenarios.buyAnItem.given("the basket total is 12.5")(() => undefined).';
   change('example/checkout.test.ts', 6, following);
   const followingCompletions = await complete(following, following.length);
   assert.ok(followingCompletions.includes('when'));
   assert.ok(!followingCompletions.includes('given'));
   assert.ok(!followingCompletions.includes('then'));
-  const wrongOrder = spec + '\nscenarios.buyAnItem.when`checkout is calculated`(Effect.void);';
+  const wrongOrder = spec + '\nscenarios.buyAnItem.when`checkout is calculated`(() => undefined);';
   change('example/checkout.test.ts', 7, wrongOrder);
   const orderDiagnostic = await request('textDocument/diagnostic', { textDocument: { uri: uri('example/checkout.test.ts') } });
   assert.ok(orderDiagnostic.items.some(item => item.code === 2339 && /Property 'when' does not exist/.test(item.message)));

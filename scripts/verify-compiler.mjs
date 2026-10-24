@@ -32,13 +32,18 @@ errorAt("scenarios.buyAnItem.given('checkout is calculated')", [2345, 2769]);
 errorAt('scenarios.buyAnItem.when`', [2339]);
 errorAt('afterGiven.given(', [2339]);
 errorAt('afterGiven.then(', [2339]);
-errorAt('run(afterGiven)', [2345]);
+errorAt('run(afterGiven)', [2345, 2739]);
 errorAt('needsAnd.when(', [2339]);
-errorAt('run(unresolved)', [2345]);
-errorAt('unresolved.pipe(provide(Layer.empty))', [2345]);
-errorAt('provide(openLayer)', [2345]);
+errorAt("afterGiven.when('checkout is calculated')((state: string)", [2345, 2769]);
+errorAt("scenarios.buyAnItem.given('the basket total is 12.5')((state: number)", [2345, 2769]);
+errorAt('Bdd.gen(function* () { yield 42;', [2345, 2769]);
+errorAt("afterGiven.when('checkout is calculated')(42)", [2345, 2769]);
 
-const path = 'example/checkout.feature';
+errorAt("afterGiven.when('checkout is calculated')(Bdd.gen(function* () { return yield* textState.actual", [2345, 2769]);
+errorAt("scenarios.buyAnItem.given('the basket total is 12.5')(Bdd.gen", [2345, 2769]);
+errorAt("afterGiven.when('checkout is calculated')(Bdd.gen(function* () { return yield* textState.expected", [2345, 2769]);
+
+const path = 'tests/runtime-assets/compiler.feature';
 const original = readFileSync(path, 'utf8');
 try {
   writeFileSync(path, original.replace('Buy an item', 'Purchase an item'));
@@ -63,7 +68,7 @@ try {
   const malformed = compile();
   show('Malformed feature', malformed);
   assert.equal(malformed.status, 2);
-  assert.match(malformed.output, /checkout.feature.*gherkin|checkout.feature.*[Pp]arser|checkout.feature.*inconsistent/);
+  assert.match(malformed.output, /compiler.feature.*gherkin|compiler.feature.*[Pp]arser|compiler.feature.*inconsistent/);
 } finally {
   writeFileSync(path, original);
 }

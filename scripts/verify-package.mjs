@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,7 +28,7 @@ try {
   assert.ok(packed.files.some(file => file.path === 'dist/mapper/server.js'));
   assert.ok(!packed.files.some(file => file.path.startsWith('experiments/')));
   const dependencies = Object.fromEntries(
-    ['@amiceli/vitest-cucumber', 'effect', '@types/node', 'typescript', 'vite', 'vitest', 'oxlint']
+    ['@amiceli/vitest-cucumber', 'zod', '@types/node', 'typescript', 'vite', 'vitest', 'oxlint']
       .map(name => [name, manifest.devDependencies[name]]),
   );
   dependencies[manifest.name] = `file:${join(packDirectory, packed.filename)}`;
@@ -50,9 +50,30 @@ export default defineConfig({ plugins: [gherkinFeaturePlugin()] });
     jsPlugins: [`./node_modules/${manifest.name}/oxlint/gherkin-steps.mjs`],
     rules: { 'gherkin-feature/valid-step-template': 'error' },
   }));
-  copyFileSync(join(root, 'example/checkout.feature'), join(consumer, 'checkout.feature'));
-  copyFileSync(join(root, 'example/checkout.test.ts'), join(consumer, 'checkout.test.ts'));
+  writeFileSync(join(consumer, 'checkout.feature'), `Feature: Checkout
+ Scenario: Buy an item
+  Given the basket total is 12.5
+  When checkout is calculated
+  Then the order total is 12.5
+`);
+  writeFileSync(join(consumer, 'checkout.test.ts'), `
+import { expect } from 'vitest';
+import { z } from 'zod';
+import { Bdd } from '${manifest.name}/bdd';
+import { run, scenarios } from './checkout.feature';
+const OrderTotal = Bdd.state(z.coerce.number());
+run(scenarios.buyAnItem
+  .given\`the basket total is \${OrderTotal}\`(Bdd.identity)
+  .when('checkout is calculated')(total => total)
+  .then\`the order total is \${OrderTotal}\`(Bdd.gen(function* () {
+    const actual = yield* OrderTotal.actual;
+    const expected = yield* OrderTotal.expected;
+    expect(actual).toBe(expected);
+    return actual;
+  })));
+`);
   success(execute('npm', ['install', '--no-audit', '--no-fund']));
+  assert.equal(existsSync(join(consumer, 'node_modules/effect')), false, 'Effect must not be installed');
   console.log(`Installed packed ${packed.id} into a clean consumer`);
 
   const compile = () => execute(join(consumer, 'node_modules/.bin/tsc'), ['--noEmit', '--runExternalCode', '--pretty', 'false']);
@@ -60,9 +81,8 @@ export default defineConfig({ plugins: [gherkinFeaturePlugin()] });
   console.log('Installed fluent feature: compiler exit 0');
   const invalidPath = join(consumer, 'invalid-order.ts');
   writeFileSync(invalidPath, `
-import { Effect } from 'effect';
 import { run, scenarios } from './checkout.feature';
-run(scenarios.buyAnItem.when\`checkout is calculated\`(Effect.void));
+run(scenarios.buyAnItem.when\`checkout is calculated\`(() => undefined));
 `);
   const invalid = compile();
   assert.equal(invalid.status, 2, invalid.output);

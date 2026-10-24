@@ -1,26 +1,36 @@
 {
   "name": "vitest-cucumber-effect",
   "version": "0.1.0",
-  "description": "Effect-first, type-safe Gherkin scenarios for Vitest Cucumber",
+  "description": "Type-safe Gherkin scenarios for Vitest with functions, generators and Standard Schema",
   "type": "module",
   "engines": {
     "node": ">=24.11.0"
   },
-  "files": ["dist/", "src/*.ts", "mapper/*.ts", "oxlint/*.mjs", "README.md", "docs/*.md"],
+  "files": [
+    "dist/",
+    "src/*.ts",
+    "mapper/*.ts",
+    "oxlint/*.mjs",
+    "README.md",
+    "docs/*.md"
+  ],
   "exports": {
-    "./effect": {
-      "types": "./dist/src/effect-runtime.d.ts",
-      "default": "./dist/src/effect-runtime.js"
-    },
     "./vite": {
       "types": "./dist/src/vite-plugin.d.ts",
       "default": "./dist/src/vite-plugin.js"
     },
-    "./oxlint": "./oxlint/gherkin-steps.mjs"
+    "./oxlint": "./oxlint/gherkin-steps.mjs",
+    "./bdd": {
+      "types": "./dist/src/effect-runtime.d.ts",
+      "default": "./dist/src/effect-runtime.js"
+    }
   },
   "typescript": {
     "contentMapper": {
-      "exec": ["node", "dist/mapper/server.js"],
+      "exec": [
+        "node",
+        "dist/mapper/server.js"
+      ],
       "compilerOptions": [],
       "dynamicConfig": false
     }
@@ -44,22 +54,22 @@
   "dependencies": {
     "@cucumber/gherkin": "42.0.1",
     "@cucumber/messages": "34.2.1",
-    "ts-content-mapper": "0.1.0"
+    "ts-content-mapper": "0.1.0",
+    "@standard-schema/spec": "1.1.0"
   },
   "peerDependencies": {
     "@amiceli/vitest-cucumber": "^8.0.0",
-    "effect": "^4.0.6",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
   },
   "devDependencies": {
     "@amiceli/vitest-cucumber": "8.0.0",
     "@types/node": "24.10.0",
-    "effect": "4.0.6",
     "gherkin-content-mapper": "file:./mapper",
     "oxlint": "1.89.0",
     "typescript": "7.1.0-dev.20261023.1",
     "vite": "8.3.5",
-    "vitest": "5.0.5"
+    "vitest": "5.0.5",
+    "zod": "4.6.7"
   }
 }

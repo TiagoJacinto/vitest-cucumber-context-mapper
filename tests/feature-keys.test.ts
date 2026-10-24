@@ -1,11 +1,10 @@
-import { Effect } from 'effect';
 import { expect, it } from 'vitest';
 import { run, scenarios } from './runtime-assets/object-keys.feature';
 
 // The emitted JavaScript must preserve arbitrary Gherkin names as own data keys.
 run(
-  scenarios['__proto__'].given('the first key')(Effect.void),
-  scenarios.constructor.given('the second key')(Effect.void),
+  scenarios['__proto__'].given('the first key')(() => undefined),
+  scenarios.constructor.given('the second key')(() => undefined),
 );
 it('preserves special object keys through the actual Vite feature import', () => {
   expect(Object.hasOwn(scenarios, '__proto__')).toBe(true);

@@ -2,7 +2,7 @@
 
 ## Boundary
 
-Use a generic Gherkin mapper to turn official Gherkin AST data into virtual TypeScript, and a separate optional Vitest Cucumber integration to construct typed Effect steps and scenarios. The mapper should not import Vitest Cucumber or run tests. The wrapper should not implement a parser or content-mapper transport.
+Use a generic Gherkin mapper to turn official Gherkin AST data into virtual TypeScript, and a separate optional Vitest Cucumber integration to construct typed callback/generator steps and scenarios. The mapper should not import Vitest Cucumber or run tests. The wrapper should not implement a parser or content-mapper transport.
 
 This split keeps the format-level compiler integration reusable and prevents TypeScript 7.1 from becoming a runtime requirement of @amiceli/vitest-cucumber.
 
@@ -21,7 +21,7 @@ packages/
     tests/
   vitest-cucumber-typed/
     src/
-      effect-runtime.ts    # Scenario plans, Layers and upstream registration
+      effect-runtime.ts    # Scenario plans, step execution and upstream registration
       vite-plugin.ts        # Runtime .feature module transform
     tests/
   examples/
@@ -67,27 +67,39 @@ The adapter uses the exact SDK version recorded in the lockfile. The mapper pack
 The TypeScript mapper creates a type-bearing module for each `.feature` file. A Vite transform supplies matching functional constructors:
 
 ~~~ts
-import { run, scenarios } from "./checkout.feature";
-import { Bdd } from "vitest-cucumber-effect/effect";
+import { z } from 'zod';
+import { expect } from 'vitest';
+import { Bdd } from 'vitest-cucumber-effect/bdd';
+import { run, scenarios } from './checkout.feature';
 
-const CounterNumber = Schema.FiniteFromString;
-const OrderTotal = Bdd.state(CounterNumber);
+const OrderTotal = Bdd.state(z.coerce.number().finite());
+const { actual, expected } = OrderTotal;
 
 run(
   scenarios.buyAnItem
-    .given`the basket total is ${OrderTotal}`(calculateCheckout)
-    .when`checkout is calculated`(checkoutResult)
-    .then`the order total is ${OrderTotal}`(assertOrderTotal),
+    .given`the basket total is ${OrderTotal}`(Bdd.identity)
+    .when`checkout is calculated`((total: number) => total)
+    .then`the order total is ${OrderTotal}`(Bdd.gen(function* () {
+      expect(yield* actual).toBe(yield* expected);
+    })),
 );
 ~~~
 
-The step implementations are real Effect values. Each fluent stage exposes only the next actual feature keyword method; ordinary string calls require its exact next literal. The mapper generates `FluentScenario<typeof __feature.scenarios[name].steps>`. Only a completed chain is `ScenarioPlan<R, E>`, preserving external service and error inference; incomplete stages cannot run. Thunk and generator callbacks are not supported yet. `Bdd.state(schema)` pairs prior state with the expected value captured from the feature and interpolates as that capture. `.pipe(provide(layer))` installs a closed Layer when external services are needed. Tagged-template static text remains unavailable to TypeScript signatures; runtime matching and Oxlint check it against the selected feature step. The runtime still registers one Vitest Cucumber test per step using the same executor lifecycle. The runtime bridge allocates one ManagedRuntime per scenario and disposes it afterward. The public API accepts values rather than registration callbacks; callbacks remain inside the adapter to the unchanged upstream library.
+The public runtime entry is `vitest-cucumber-effect/bdd`; the package name is temporarily unchanged. Step implementations are ordinary callbacks or `Bdd.gen` implementations. The first stage receives decoded captures; subsequent stages receive the previous result followed by captures in template order. The assertion can equivalently use `(actual, expected) => { expect(actual).toBe(expected); }`.
 
-This requires the TypeScript mapper and Vite runtime plugin. Both derive the schema and constructors from the same static source. The generic parser/generator has no Effect or Vitest dependency. See [the functional design](functional-api.md) for syntax choices, resource lifetime, typing limits, and verification.
+Each fluent stage exposes only the next actual feature keyword method; ordinary string calls require its exact next literal. The mapper generates `FluentScenario<typeof __feature.scenarios[name].steps>`; only completed chains are runnable. `Bdd.state(schema)` uses Standard Schema to pair prior state with the expected capture, and interpolates as that capture. Users choose their schema library; the example uses Zod coercion because feature captures are strings. The runtime awaits callback results, generator iteration and schema validation. Capture-token identity is structural in TypeScript: tokens with the same decoded type cannot be distinguished statically, so expected-capture identity is checked at runtime. Compiler, Vitest and clean installed-package checks pass.
+
+Tagged-template static text remains unavailable to TypeScript signatures; runtime matching and Oxlint check it against the selected feature step. The adapter registers one Vitest Cucumber test per step with sequential scenario execution. Callbacks remain internal to the upstream registration boundary, while application callbacks implement step behavior.
+
+This requires the TypeScript mapper and Vite runtime plugin. Both derive the schema and constructors from the same static source. The runtime has no Effect runtime or peer dependency, services, Layers or provision API. The current `src/effect-runtime.ts` and `src/effect-input.ts` filenames remain temporarily, but these modules import no Effect. The generic parser/generator has no Vitest dependency. See [the functional design](functional-api.md) for syntax, typing limits and verification.
+
+The function/generator redesign passes compiler, Vitest, package, Oxlint and LSP checks. The installed-package verifier explicitly confirms that Effect is absent.
 
 ## Runtime parity policy
 
 The current Vitest Cucumber package has its own parser. It does not use the official parser and does not retain source positions. Use official Gherkin AST data for the mapper, but only claim typed integration for constructs that are verified against the runtime version in use.
+
+The runtime profile is validated with the official parser and accepts only top-level ordinary English Scenarios and Given/When/Then/And/But steps. Rules, Background, outlines, localized keywords, tables and docstrings are rejected. Broader metadata support does not establish runtime support.
 
 The initial example uses a basic English Feature/Scenario/step structure. Before extending the wrapper:
 
@@ -104,7 +116,7 @@ Do not modify vitest-cucumber in the first experiment. A small upstream opt-in t
 
 **A. Independent mapper:** valuable as a generic Gherkin-to-TypeScript integration, usable beyond Vitest Cucumber.
 
-**B. Companion package:** the best first distribution for Vitest-specific Effect composition. It can depend on the generic mapper and use @amiceli/vitest-cucumber as a peer dependency, without forcing mapper support on every existing user.
+**B. Companion package:** the best first distribution for Vitest-specific callback/generator composition. It can depend on the generic mapper and use @amiceli/vitest-cucumber as a peer dependency, without forcing mapper support on every existing user.
 
 **C. Upstream integration:** defer. The current runtime parser and model have no positions and differ from official Gherkin. An upstream patch would need an explicit parser-parity strategy and must not make the runtime depend on TypeScript 7.1.
 

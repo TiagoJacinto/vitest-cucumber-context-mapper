@@ -2,7 +2,7 @@ import type { Plugin } from 'vite';
 import { generate } from '../mapper/generate.ts';
 import { scenarioAliases } from '../mapper/scenario-aliases.ts';
 
-/** Supplies the public Effect runtime for Vite/Vitest .feature imports. */
+/** Supplies the public BDD runtime for Vite/Vitest .feature imports. */
 export function gherkinFeaturePlugin(): Plugin {
   return {
     name: 'gherkin-feature-runtime',
@@ -17,7 +17,7 @@ export function gherkinFeaturePlugin(): Plugin {
       }
       const aliases = scenarioAliases(schema.scenarioNames);
       return `
-import { createFeature as __createFeature, run as __run } from 'vitest-cucumber-effect/effect';
+import { createFeature as __createFeature, run as __run } from 'vitest-cucumber-effect/bdd';
 const __schema = JSON.parse(${JSON.stringify(JSON.stringify(schema))});
 const __aliases = JSON.parse(${JSON.stringify(JSON.stringify(aliases))});
 const __feature = __createFeature(${JSON.stringify(source)}, __schema, __aliases);

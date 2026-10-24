@@ -30,7 +30,7 @@ function withFeatureApi(generation: Generation): Generation {
     ...generation,
     segments: [...generation.segments, {
       text: `
-import type { FluentScenario, run as __run } from 'vitest-cucumber-effect/effect';
+import type { FluentScenario, run as __run } from 'vitest-cucumber-effect/bdd';
 type __ScenarioBuilders = {
 ${builders}
 };
