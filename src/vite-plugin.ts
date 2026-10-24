@@ -17,7 +17,7 @@ export function gherkinFeaturePlugin(): Plugin {
       }
       const aliases = scenarioAliases(schema.scenarioNames);
       return `
-import { createFeature as __createFeature, run as __run } from 'vitest-cucumber-effect/bdd';
+import { createFeature as __createFeature, run as __run } from 'vitest-cucumber-context-mapper/bdd';
 const __schema = JSON.parse(${JSON.stringify(JSON.stringify(schema))});
 const __aliases = JSON.parse(${JSON.stringify(JSON.stringify(aliases))});
 const __feature = __createFeature(${JSON.stringify(source)}, __schema, __aliases);

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Bdd } from 'vitest-cucumber-effect/bdd';
+import { Bdd } from 'vitest-cucumber-context-mapper/bdd';
 import { run, scenarios } from '../tests/runtime-assets/compiler.feature';
 import { scenarios as sequences } from '../tests/runtime-assets/fluent.feature';
 void scenarios.missingScenario;

@@ -2,7 +2,9 @@
 
 # Typed Gherkin for Vitest
 
-A real TypeScript content mapper turns Gherkin into virtual TypeScript literal metadata. The optional functional API composes callbacks and `Bdd.gen` implementations into scenarios and delegates execution to the unchanged `@amiceli/vitest-cucumber` API. The public runtime entry is `vitest-cucumber-effect/bdd`; the package name is temporarily unchanged. The runtime accepts Standard Schema validators, lets users choose Zod, and has no Effect runtime or peer dependency.
+Package releases use GitHub Actions and Release Please. See [release setup and workflow](docs/releases.md).
+
+A real TypeScript content mapper turns Gherkin into virtual TypeScript literal metadata. The optional functional API composes callbacks and `Bdd.gen` implementations into scenarios and delegates execution to the unchanged `@amiceli/vitest-cucumber` API. The public runtime entry is `vitest-cucumber-context-mapper/bdd`. The runtime accepts Standard Schema validators, lets users choose Zod, and has no Effect runtime or peer dependency.
 
 The function/generator implementation passes the real compiler, Vitest, Oxlint, headless LSP and clean installed-package checks. The installed consumer has no Effect package.
 
@@ -69,14 +71,14 @@ Observed compiler evidence:
 
 ## Configuration and use
 
-The root `tsconfig.json` registers the local development-only `gherkin-content-mapper` for `.feature` files. Consumer projects register the published `vitest-cucumber-effect` package as shown below. `--runExternalCode` lets TypeScript launch its mapper process. `vitest.config.ts` registers the separate Vite runtime transform.
+The root `tsconfig.json` registers the local development-only `gherkin-content-mapper` for `.feature` files. Consumer projects register the published `vitest-cucumber-context-mapper` package as shown below. `--runExternalCode` lets TypeScript launch its mapper process. `vitest.config.ts` registers the separate Vite runtime transform.
 
 ### Install in a project
 
 This release requires Node **24.11+**, TypeScript **7.1+ with content mappers enabled**, Vitest **5**, and a user-selected Standard Schema library. TypeScript content mappers are experimental, so use the TypeScript 7 Native Preview VS Code extension for editor support.
 
 ```sh
-npm install vitest-cucumber-effect @amiceli/vitest-cucumber zod
+npm install vitest-cucumber-context-mapper @amiceli/vitest-cucumber zod
 npm install -D vite vitest typescript@7.1.0-dev.20261023.1
 ```
 
@@ -90,7 +92,7 @@ Add the mapper package to `tsconfig.json` and enable external mapper execution w
     "allowImportingTsExtensions": true
   },
   "contentMappers": [
-    { "package": "vitest-cucumber-effect", "extensions": [".feature"] }
+    { "package": "vitest-cucumber-context-mapper", "extensions": [".feature"] }
   ]
 }
 ```
@@ -99,7 +101,7 @@ Register the runtime transform in `vitest.config.ts`:
 
 ```ts
 import { defineConfig } from 'vitest/config';
-import { gherkinFeaturePlugin } from 'vitest-cucumber-effect/vite';
+import { gherkinFeaturePlugin } from 'vitest-cucumber-context-mapper/vite';
 
 export default defineConfig({ plugins: [gherkinFeaturePlugin()] });
 ```
@@ -123,7 +125,7 @@ For editor diagnostics, install the recommended **Oxc** VS Code extension (`oxc.
 ```ts
 import { z } from 'zod';
 import { expect } from 'vitest';
-import { Bdd } from 'vitest-cucumber-effect/bdd';
+import { Bdd } from 'vitest-cucumber-context-mapper/bdd';
 import { run, scenarios } from './checkout.feature';
 
 const OrderTotal = Bdd.state(z.coerce.number().finite());

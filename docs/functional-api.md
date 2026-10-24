@@ -2,7 +2,7 @@
 
 The `.feature` module exports only named `run` and literal-keyed `scenarios`; there is no `steps` export. Each scenario is a fluent stage exposing only the next actual feature keyword method. `run()` registers immutable, ordered scenario plans with the existing Vitest Cucumber API; application code does not receive step-registration callbacks.
 
-The public runtime entry point is `vitest-cucumber-effect/bdd`. The package name is temporarily unchanged. The API uses ordinary callbacks and `Bdd.gen`, with Standard Schema validation and no Effect runtime or peer dependency. Zod is a user-selected schema library.
+The public runtime entry point is `vitest-cucumber-context-mapper/bdd`. The API uses ordinary callbacks and `Bdd.gen`, with Standard Schema validation and no Effect runtime or peer dependency. Zod is a user-selected schema library.
 
 The mixed example is implemented and verified with the real compiler, Vitest, Oxlint, headless LSP and a clean tarball consumer that has no Effect installation.
 
@@ -11,7 +11,7 @@ The mixed example is implemented and verified with the real compiler, Vitest, Ox
 ```ts
 import { z } from 'zod';
 import { expect } from 'vitest';
-import { Bdd } from 'vitest-cucumber-effect/bdd';
+import { Bdd } from 'vitest-cucumber-context-mapper/bdd';
 import { run, scenarios } from './checkout.feature';
 
 const OrderTotal = Bdd.state(z.coerce.number().finite());

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { expect } from 'vitest';
-import { Bdd } from 'vitest-cucumber-effect/bdd';
+import { Bdd } from 'vitest-cucumber-context-mapper/bdd';
 import { run, scenarios } from './checkout.feature';
 
 const OrderTotal = Bdd.state(z.coerce.number().finite());
