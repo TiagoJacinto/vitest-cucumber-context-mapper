@@ -1,5 +1,6 @@
 {
   "jsPlugins": ["./oxlint/gherkin-steps.mjs"],
+  "ignorePatterns": ["fixtures/**"],
   "rules": {
     "gherkin-feature/valid-step-template": "error"
   }

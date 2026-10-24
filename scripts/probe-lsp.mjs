@@ -95,12 +95,12 @@ try {
   const feature = readFileSync('example/checkout.feature', 'utf8');
   const builderHover = await request('textDocument/hover', {
     textDocument: { uri: uri('example/checkout.test.ts') },
-    position: positionAt(spec, spec.indexOf('.buyAnItem(') + 2),
+    position: positionAt(spec, spec.indexOf('.buyAnItem') + 2),
   });
   assert.match(builderHover?.contents?.value ?? '', /buyAnItem/);
-  assert.match(builderHover?.contents?.value ?? '', /checkout is calculated/);
-  assert.match(builderHover?.contents?.value ?? '', /Step<"Given", string/);
-  console.log('scenario builder hover: verified ordered steps and capture placeholders');
+  assert.match(builderHover?.contents?.value ?? '', /given|FluentScenario/);
+  assert.match(builderHover?.contents?.value ?? '', /FluentStepTag|FluentScenario/);
+  console.log('scenario stage hover: ' + JSON.stringify(builderHover));
 
   const change = (path, version, text) => send({ method: 'textDocument/didChange', params: {
     textDocument: { uri: uri(path), version }, contentChanges: [{ text }],
@@ -115,12 +115,32 @@ try {
   const member = spec + '\nvoid scenarios.';
   change('example/checkout.test.ts', 2, member);
   assert.ok((await complete(member, member.length)).includes('buyAnItem'));
-  const literalPrefix = spec + '\nvoid steps.given("';
-  change('example/checkout.test.ts', 3, literalPrefix + '");');
+  const stage = spec + '\nvoid scenarios.buyAnItem.';
+  change('example/checkout.test.ts', 3, stage);
+  const stageCompletions = await complete(stage, stage.length);
+  assert.ok(stageCompletions.includes('given'));
+  assert.ok(!stageCompletions.includes('when'));
+  const literalPrefix = spec + '\nvoid scenarios.buyAnItem.given("';
+  change('example/checkout.test.ts', 4, literalPrefix + '");');
   const givenCompletions = await complete(literalPrefix + '");', literalPrefix.length);
   assert.ok(givenCompletions.some(label => label.includes('the basket total is 12.5')));
-  change('example/checkout.test.ts', 4, spec);
-  console.log('consumer autocomplete: verified scenario builder and Given text');
+  change('example/checkout.test.ts', 5, spec);
+  console.log('consumer autocomplete: verified scenarios, initial given without when, and next Given literal');
+
+  const following = spec + '\nvoid scenarios.buyAnItem.given("the basket total is 12.5")(Effect.void).';
+  change('example/checkout.test.ts', 6, following);
+  const followingCompletions = await complete(following, following.length);
+  assert.ok(followingCompletions.includes('when'));
+  assert.ok(!followingCompletions.includes('given'));
+  assert.ok(!followingCompletions.includes('then'));
+  const wrongOrder = spec + '\nscenarios.buyAnItem.when`checkout is calculated`(Effect.void);';
+  change('example/checkout.test.ts', 7, wrongOrder);
+  const orderDiagnostic = await request('textDocument/diagnostic', { textDocument: { uri: uri('example/checkout.test.ts') } });
+  assert.ok(orderDiagnostic.items.some(item => item.code === 2339 && /Property 'when' does not exist/.test(item.message)));
+  change('example/checkout.test.ts', 8, spec);
+  const restoredOrder = await request('textDocument/diagnostic', { textDocument: { uri: uri('example/checkout.test.ts') } });
+  assert.deepEqual(restoredOrder.items, []);
+  console.log('fluent progression: next When completion and TS2339 for When before Given verified');
 
   change('example/checkout.feature', 2, feature.replace('Buy an item', 'Purchase an item'));
   const renamed = await request('textDocument/diagnostic', { textDocument: { uri: uri('example/checkout.test.ts') } });

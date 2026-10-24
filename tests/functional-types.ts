@@ -1,33 +1,31 @@
-// Checked by the real content mapper in npm run typecheck; not a runtime test file.
+// Checked through the real content mapper; this module is not executed by Vitest.
 import { Context, Effect, Schema } from 'effect';
-import type { ScenarioPlan, Step } from 'vitest-cucumber-context-mapper-prototype/effect';
-import { Bdd } from 'vitest-cucumber-context-mapper-prototype/effect';
-import { run, scenarios, steps } from '../example/checkout.feature';
+import type { ScenarioPlan } from 'vitest-cucumber-effect/effect';
+import { Bdd } from 'vitest-cucumber-effect/effect';
+import { scenarios } from '../example/checkout.feature';
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 class Basket extends Context.Service<Basket, number>()('type-contract/Basket') {}
 class Payment extends Context.Service<Payment, boolean>()('type-contract/Payment') {}
 
-const given = steps.given('the basket total is 12.5')(Effect.gen(function* () {
+const afterGiven = scenarios.buyAnItem.given('the basket total is 12.5')(Effect.gen(function* () {
   return yield* Basket;
 }));
-const when = steps.when('checkout is calculated')(Effect.gen(function* () {
+const afterWhen = afterGiven.when('checkout is calculated')(Effect.gen(function* () {
   yield* Payment;
   return yield* Effect.fail('PaymentDeclined' as const);
 }));
-const then = steps.then('the order total is 12.5')(Effect.void);
-const plan = scenarios.buyAnItem(given, when, then);
-type Services<P> = P extends ScenarioPlan<infer R, infer E> ? R : never;
-type Errors<P> = P extends ScenarioPlan<infer R, infer E> ? E : never;
-type Text<S> = S extends Step<infer K, infer T, infer R, infer E> ? T : never;
+const plan = afterWhen.then('the order total is 12.5')(Effect.void);
+type Services<P> = P extends ScenarioPlan<infer R, infer _E> ? R : never;
+type Errors<P> = P extends ScenarioPlan<infer _R, infer E> ? E : never;
 
 const servicesAreExact: Equal<Services<typeof plan>, Basket | Payment> = true;
 const errorsAreExact: Equal<Errors<typeof plan>, 'PaymentDeclined'> = true;
-const stepLiteralIsExact: Equal<Text<typeof given>, 'the basket total is 12.5'> = true;
-const exactKeyMatchesAlias: Equal<
-  typeof scenarios['Buy an item'], typeof scenarios.buyAnItem
-> = true;
-void [servicesAreExact, errorsAreExact, stepLiteralIsExact, exactKeyMatchesAlias];
+const firstMethodIsGiven: Equal<keyof typeof scenarios.buyAnItem, 'given'> = true;
+const secondMethodIsWhen: Equal<keyof typeof afterGiven, 'when'> = true;
+const thirdMethodIsThen: Equal<keyof typeof afterWhen, 'then'> = true;
+const exactKeyMatchesAlias: Equal<typeof scenarios['Buy an item'], typeof scenarios.buyAnItem> = true;
+void [servicesAreExact, errorsAreExact, firstMethodIsGiven, secondMethodIsWhen, thirdMethodIsThen, exactKeyMatchesAlias];
 
 type FeatureModule = typeof import('../example/checkout.feature');
 const scenarioName: keyof FeatureModule['scenarios'] = 'Buy an item';

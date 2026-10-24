@@ -67,20 +67,21 @@ The adapter uses the exact SDK version recorded in the lockfile. The mapper pack
 The TypeScript mapper creates a type-bearing module for each `.feature` file. A Vite transform supplies matching functional constructors:
 
 ~~~ts
-import { run, scenarios, steps } from "./checkout.feature";
-import { Bdd } from "vitest-cucumber-context-mapper-prototype/effect";
+import { run, scenarios } from "./checkout.feature";
+import { Bdd } from "vitest-cucumber-effect/effect";
 
 const CounterNumber = Schema.FiniteFromString;
 const OrderTotal = Bdd.state(CounterNumber);
 
-run(scenarios.buyAnItem(
-  steps.given`the basket total is ${OrderTotal}`(calculateCheckout),
-  steps.when("checkout is calculated")(checkoutResult),
-  steps.then`the order total is ${OrderTotal}`(assertOrderTotal),
-));
+run(
+  scenarios.buyAnItem
+    .given`the basket total is ${OrderTotal}`(calculateCheckout)
+    .when`checkout is calculated`(checkoutResult)
+    .then`the order total is ${OrderTotal}`(assertOrderTotal),
+);
 ~~~
 
-The step implementations are real Effect values. The scenario builder requires an exact tuple of keyword/text pairs for regular string calls and infers the union of Effect service requirements. `Bdd.state(schema)` pairs prior state with the expected value captured from the feature and interpolates as that capture. `provide()` installs a closed Layer when external services are needed. The runtime bridge allocates one ManagedRuntime per scenario and disposes it afterward. The public API accepts values rather than registration callbacks; callbacks remain inside the adapter to the unchanged upstream library.
+The step implementations are real Effect values. Each fluent stage exposes only the next actual feature keyword method; ordinary string calls require its exact next literal. The mapper generates `FluentScenario<typeof __feature.scenarios[name].steps>`. Only a completed chain is `ScenarioPlan<R, E>`, preserving external service and error inference; incomplete stages cannot run. Thunk and generator callbacks are not supported yet. `Bdd.state(schema)` pairs prior state with the expected value captured from the feature and interpolates as that capture. `.pipe(provide(layer))` installs a closed Layer when external services are needed. Tagged-template static text remains unavailable to TypeScript signatures; runtime matching and Oxlint check it against the selected feature step. The runtime still registers one Vitest Cucumber test per step using the same executor lifecycle. The runtime bridge allocates one ManagedRuntime per scenario and disposes it afterward. The public API accepts values rather than registration callbacks; callbacks remain inside the adapter to the unchanged upstream library.
 
 This requires the TypeScript mapper and Vite runtime plugin. Both derive the schema and constructors from the same static source. The generic parser/generator has no Effect or Vitest dependency. See [the functional design](functional-api.md) for syntax choices, resource lifetime, typing limits, and verification.
 
@@ -111,7 +112,7 @@ Recommended path: prove the independent mapper and companion wrapper first; keep
 
 ## Roadmap
 
-The compiler-backed milestone is demonstrated in this repository: a default `.feature` import exposes functional `scenarios` builders and step tags, invalid names and ordered step tuples produce compiler diagnostics, and changing the feature changes those diagnostics without a Vitest run. A Vite transform supplies the runtime implementation. The milestones below describe hardening and expanding that proof into a maintained package.
+The compiler-backed milestone is demonstrated in this repository: a named `.feature` import exposes `run` and fluent `scenarios`, invalid names, stage keywords and ordinary step literals produce compiler diagnostics, and changing the feature changes those diagnostics without a Vitest run. A Vite transform supplies the runtime implementation. The milestones below describe hardening and expanding that proof into a maintained package.
 
 ### Milestone 1: Scenario names
 
@@ -121,7 +122,7 @@ The compiler-backed milestone is demonstrated in this repository: a default `.fe
 
 ### Milestone 2: Exact step typing
 
-- Export ordered step records with normalized kind, source keyword, text, and location.
+- Keep ordered step metadata private and generate fluent stages from normalized keyword and text records.
 - Constrain step text inside the selected scenario and preserve Given/When/Then/And/But distinctions.
 - Design Background and Rule composition with the same scopes as the runtime API.
 - Test that matching remains exact and that parser differences fail closed or are documented.
@@ -142,7 +143,7 @@ The compiler-backed milestone is demonstrated in this repository: a default `.fe
 
 ### Milestone 5: Editor and stability
 
-- The headless TypeScript 7.1 LSP probe currently verifies mapped hover, diagnostics, feature edits, and registrations. The user confirmed activation in VS Code multi-root; consumer completion and builder hovers are also verified by the headless probe.
+- The headless TypeScript 7.1 LSP probe currently verifies mapped hover, diagnostics, feature edits, and registrations. The user confirmed activation in VS Code multi-root; the updated probe checks consumer completion and fluent stage hovers after the parent fluent build is available.
 - Verify Gherkin authoring completion, navigation, formatting, and workspace-trust behavior separately; do not infer them from the current LSP probe.
 - Re-test each supported TypeScript release and pin a compatibility matrix after TypeScript 7.1 stabilizes.
 - Reassess SDK maintenance and protocol changes before any release.
@@ -162,4 +163,4 @@ The compiler-backed milestone is demonstrated in this repository: a default `.fe
 - Cucumber Expression and regular-expression matching as a type-level relation.
 - Parameter transformer result types and mappedExamples conversions.
 - Editor discovery and Gherkin-specific language tooling over TypeScript’s mapped virtual document.
-- Automatic typing applies to the `.feature` module's default functional API; raw `loadFeature(path)` calls do not gain these types.
+- Automatic typing applies to the `.feature` module's named functional API; raw `loadFeature(path)` calls do not gain these types.

@@ -23,25 +23,21 @@ function runtimeCode(text: string, id = '/shopping.feature') {
 }
 
 describe('functional Effect feature mapper', () => {
-  it('adds exact-name and camelCase builders with complete ordered step tuples', () => {
+  it('ties exact-name and camelCase fluent builders to their source step tuples', () => {
     const code = transformVitestFeature(source).text;
-    expect(code).toContain("import type { Keyword, Step, StepTag, ScenarioPlan, run as __run } from 'vitest-cucumber-context-mapper-prototype/effect'");
-    const tuple = '<const S extends readonly [__ScenarioStep<"Given", "a basket">, __ScenarioStep<"When", "I buy an item">, __ScenarioStep<"Then", "it is mine">]>';
+    expect(code).toContain("import type { FluentScenario, run as __run } from 'vitest-cucumber-effect/effect'");
+    const tuple = 'FluentScenario<typeof __feature.scenarios["Buy an item"][\'steps\']>';
     expect(code).toContain(`readonly "Buy an item": ${tuple}`);
     expect(code).toContain(`readonly "buyAnItem": ${tuple}`);
-    expect(code).toContain('ScenarioPlan<__Requirements<S[number]>, __Errors<S[number]>>');
     expect(code).not.toContain('typedDescribeFeature');
     expect(code).not.toContain('any');
   });
 
-  it('emits ordinary curried literal-checked helpers for all five keywords', () => {
+  it('exports fluent scenarios without a separate steps API', () => {
     const code = transformVitestFeature(source).text;
-    expect(code).toContain('type __TypedStepTag<K extends Keyword> = StepTag<K, __Text<K>>;');
-    expect(code).toContain('type __StepApi = {');
-    for (const keyword of ['Given', 'When', 'Then', 'And', 'But']) {
-      expect(code).toContain(`readonly ${keyword.toLowerCase()}: __TypedStepTag<'${keyword}'>`);
-    }
-    expect(code).not.toContain('TemplateStringsArray');
+    expect(code).toContain('FluentScenario<typeof __feature.scenarios["Leave the shop"][\'steps\']>');
+    expect(code).toContain('export declare const run: typeof __run;');
+    expect(code).not.toContain('export declare const steps');
   });
 
   it('keeps generic metadata and source mappings intact', () => {
@@ -58,7 +54,7 @@ describe('functional Effect feature mapper', () => {
 
   it('wires the original source and shared aliases to the public runtime', () => {
     const code = runtimeCode(source, '/shopping.feature?import');
-    expect(code).toContain("import { createFeature as __createFeature, run as __run } from 'vitest-cucumber-context-mapper-prototype/effect'");
+    expect(code).toContain("import { createFeature as __createFeature, run as __run } from 'vitest-cucumber-effect/effect'");
     expect(code).toContain(`const __feature = __createFeature(${JSON.stringify(source)}, __schema, __aliases)`);
     expect(code).toContain('export const scenarios = __feature.scenarios;');
     expect(code).toContain('export const run = __run;');
@@ -101,7 +97,7 @@ describe('functional Effect feature mapper', () => {
     }
     expect(() => runtimeCode(text)).toThrow(message);
     expect(runtimeCode(source)).toContain('export const scenarios');
-    expect(runtimeCode(source)).toContain('export const steps = Object.freeze({');
+    expect(runtimeCode(source)).not.toContain('export const steps');
     expect(runtimeCode(source)).not.toContain('export const then');
   });
 

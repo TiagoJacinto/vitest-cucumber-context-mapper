@@ -27,10 +27,13 @@ function errorAt(fragment, codes) {
   assert.match(diagnostic, new RegExp('TS(' + codes.join('|') + ')\\b'));
 }
 errorAt('scenarios.missingScenario', [2339, 2551]);
-errorAt("steps.given('wrong step')", [2345, 2769]);
-errorAt("steps.given('checkout is calculated')", [2345, 2769]);
-errorAt('buyAnItem(when, given, then)', [2345]);
-errorAt('buyAnItem(given, when)', [2554]);
+errorAt("scenarios.buyAnItem.given('wrong step')", [2345, 2769]);
+errorAt("scenarios.buyAnItem.given('checkout is calculated')", [2345, 2769]);
+errorAt('scenarios.buyAnItem.when`', [2339]);
+errorAt('afterGiven.given(', [2339]);
+errorAt('afterGiven.then(', [2339]);
+errorAt('run(afterGiven)', [2345]);
+errorAt('needsAnd.when(', [2339]);
 errorAt('run(unresolved)', [2345]);
 errorAt('unresolved.pipe(provide(Layer.empty))', [2345]);
 errorAt('provide(openLayer)', [2345]);
@@ -49,6 +52,12 @@ try {
   show('Renamed step', changedStep);
   assert.equal(changedStep.status, 2);
   assert.match(changedStep.output, /TS(?:2345|2769)/);
+
+  writeFileSync(path, original.replace('Given the basket total', 'When the basket total'));
+  const changedOrder = compile();
+  show('Changed first keyword', changedOrder);
+  assert.equal(changedOrder.status, 2);
+  assert.match(changedOrder.output, /TS2339.*Property 'given' does not exist/);
 
   writeFileSync(path, 'Feature: Broken\n Scenario: bad\n  Given ok\n  Examples:\n   | x |\n   | 1 | 2 |\n');
   const malformed = compile();

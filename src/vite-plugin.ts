@@ -17,19 +17,12 @@ export function gherkinFeaturePlugin(): Plugin {
       }
       const aliases = scenarioAliases(schema.scenarioNames);
       return `
-import { createFeature as __createFeature, run as __run } from 'vitest-cucumber-context-mapper-prototype/effect';
+import { createFeature as __createFeature, run as __run } from 'vitest-cucumber-effect/effect';
 const __schema = JSON.parse(${JSON.stringify(JSON.stringify(schema))});
 const __aliases = JSON.parse(${JSON.stringify(JSON.stringify(aliases))});
 const __feature = __createFeature(${JSON.stringify(source)}, __schema, __aliases);
 export const run = __run;
 export const scenarios = __feature.scenarios;
-export const steps = Object.freeze({
-  given: __feature.given,
-  when: __feature.when,
-  then: __feature.then,
-  and: __feature.and,
-  but: __feature.but,
-});
 `;
     },
   };

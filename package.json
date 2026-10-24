@@ -1,27 +1,62 @@
 {
-  "name": "vitest-cucumber-context-mapper-prototype",
-  "private": true,
+  "name": "vitest-cucumber-effect",
+  "version": "0.1.0",
+  "description": "Effect-first, type-safe Gherkin scenarios for Vitest Cucumber",
   "type": "module",
+  "engines": {
+    "node": ">=24.11.0"
+  },
+  "files": ["dist/", "src/*.ts", "mapper/*.ts", "oxlint/*.mjs", "README.md", "docs/*.md"],
   "exports": {
-    "./effect": "./src/effect-runtime.ts"
+    "./effect": {
+      "types": "./dist/src/effect-runtime.d.ts",
+      "default": "./dist/src/effect-runtime.js"
+    },
+    "./vite": {
+      "types": "./dist/src/vite-plugin.d.ts",
+      "default": "./dist/src/vite-plugin.js"
+    },
+    "./oxlint": "./oxlint/gherkin-steps.mjs"
+  },
+  "typescript": {
+    "contentMapper": {
+      "exec": ["node", "dist/mapper/server.js"],
+      "compilerOptions": [],
+      "dynamicConfig": false
+    }
   },
   "scripts": {
-    "lint": "oxlint",
+    "build": "tsc -p tsconfig.build.json --runExternalCode",
+    "pretypecheck": "npm run build",
     "typecheck": "tsc --noEmit --runExternalCode",
+    "pretest": "npm run build",
     "test": "vitest run",
     "verify": "npm run typecheck && npm test && node scripts/verify-compiler.mjs",
-    "probe:lsp": "node scripts/probe-lsp.mjs"
+    "verify:package": "node scripts/verify-package.mjs",
+    "prelint": "npm run build",
+    "lint": "oxlint",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run verify",
+    "preprobe:lsp": "npm run build",
+    "probe:lsp": "node scripts/probe-lsp.mjs",
+    "probe:fluent": "npm run verify"
   },
   "dependencies": {
-    "@amiceli/vitest-cucumber": "8.0.0",
     "@cucumber/gherkin": "42.0.1",
     "@cucumber/messages": "34.2.1",
-    "effect": "4.0.6",
-    "gherkin-content-mapper": "file:./mapper",
     "ts-content-mapper": "0.1.0"
   },
+  "peerDependencies": {
+    "@amiceli/vitest-cucumber": "^8.0.0",
+    "effect": "^4.0.6",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  },
   "devDependencies": {
+    "@amiceli/vitest-cucumber": "8.0.0",
     "@types/node": "24.10.0",
+    "effect": "4.0.6",
+    "gherkin-content-mapper": "file:./mapper",
     "oxlint": "1.89.0",
     "typescript": "7.1.0-dev.20261023.1",
     "vite": "8.3.5",

@@ -1,6 +1,6 @@
 <img src="assets/icon.svg" width="64" height="64" alt="">
 
-# Vitest Cucumber content mapper prototype
+# Vitest Cucumber Effect
 
 A real TypeScript content mapper turns Gherkin into virtual TypeScript literal metadata. The optional functional API composes real Effect values into scenarios and delegates execution to the unchanged `@amiceli/vitest-cucumber` API. Effect is pinned to **4.0.6**.
 
@@ -19,7 +19,7 @@ npm run probe:lsp
 The workspace recommends the **TypeScript 7** extension (`TypeScriptTeam.native-preview`) and configures the local TypeScript 7.1 SDK. The headless LSP probe verifies mapper hover and diagnostics; interactive editor setup also depends on VS Code's workspace shape and SDK selection.
 
 1. Install and enable the recommended **TypeScript 7** extension (`TypeScriptTeam.native-preview`).
-2. Run `npm ci` so the local TypeScript 7.1 compiler and mapper dependencies are present.
+2. Run `npm ci` and `npm run build` so the local TypeScript 7.1 compiler, mapper dependencies, and runtime declarations are present.
 3. Trust this workspace so the language service can start the configured mapper process.
 4. For a single-folder workspace, `.vscode/settings.json` supplies the mapper settings. For a multi-root workspace, add these window-wide settings to the `.code-workspace` file using absolute paths to this repo's SDK:
 
@@ -46,6 +46,7 @@ Individual commands:
 npm run typecheck
 npm test
 node scripts/verify-compiler.mjs
+npm run verify:package
 npx tsc -p fixtures --noEmit --runExternalCode --pretty false
 ```
 
@@ -54,16 +55,54 @@ The last command intentionally exits **2**. It checks real compiler errors for u
 Observed compiler evidence:
 
 - Valid project: exit **0**.
-- Invalid fixture: exit **2**, with TS2339, TS2345/TS2769 and TS2554 for invalid API calls.
+- Invalid fixture: exit **2**, with TS2339 for wrong fluent order and TS2345/TS2769 for incomplete plans, invalid text, or unmet services.
 - Rename scenario to `Purchase an item`: exit **2**, and the existing `buyAnItem` reference fails.
 - Rename the ordinary When step: exit **2**, and the existing step call fails.
+- Change the first feature keyword: exit **2**, and the formerly valid first fluent method fails.
 - Malformed Gherkin: exit **2**, with a diagnostic mapped to `example/checkout.feature`.
 - Restored feature: exit **0**.
 - `npm test`: real Vitest execution passed, including the functional checkout scenario, runtime lifecycle, cleanup, retries and invalid profiles.
 
+`npm run verify:package` packs the release, installs it into a temporary consumer project, and checks real compilation, Vitest execution, and Oxlint using the installed files. It also requires TS2339 for When before Given and a lint error for an invalid tagged suffix.
+
 ## Configuration and use
 
-The root `tsconfig.json` registers `gherkin-content-mapper` for `.feature` files. `--runExternalCode` lets TypeScript launch its mapper process. `vitest.config.ts` registers the separate Vite runtime transform.
+The root `tsconfig.json` registers the local development-only `gherkin-content-mapper` for `.feature` files. Consumer projects register the published `vitest-cucumber-effect` package as shown below. `--runExternalCode` lets TypeScript launch its mapper process. `vitest.config.ts` registers the separate Vite runtime transform.
+
+### Install in a project
+
+This release requires Node **24.11+**, TypeScript **7.1+ with content mappers enabled**, Vitest **5**, and Effect **4**. TypeScript content mappers are experimental, so use the TypeScript 7 Native Preview VS Code extension for editor support.
+
+```sh
+npm install vitest-cucumber-effect effect @amiceli/vitest-cucumber
+npm install -D vite vitest typescript@7.1.0-dev.20261023.1
+```
+
+Add the mapper package to `tsconfig.json` and enable external mapper execution when typechecking:
+
+```json
+{
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true
+  },
+  "contentMappers": [
+    { "package": "vitest-cucumber-effect", "extensions": [".feature"] }
+  ]
+}
+```
+
+Register the runtime transform in `vitest.config.ts`:
+
+```ts
+import { defineConfig } from 'vitest/config';
+import { gherkinFeaturePlugin } from 'vitest-cucumber-effect/vite';
+
+export default defineConfig({ plugins: [gherkinFeaturePlugin()] });
+```
+
+Use `npx tsc --noEmit --runExternalCode` for a command-line typecheck. The feature file also needs to be imported by a test module so Vitest loads it through the Vite transform.
 
 ## Oxlint step-template checks
 
@@ -73,15 +112,17 @@ This prototype uses **Oxlint only** for static checking of interpolated step tem
 npm run lint
 ```
 
-The local Oxlint JS plugin reads the imported `.feature` file with the same Gherkin generator used by the content mapper. For a template inside a `scenarios.<name>(...)` builder, it checks the corresponding step by position, keyword, and exact surrounding template text. Interpolations act as wildcards, matching the runtime capture behavior. A suffix such as ``steps.then`the order total is ${OrderTotal} s` `` is reported when the feature step ends at the interpolation.
+The local Oxlint JS plugin reads the imported `.feature` file with the same Gherkin generator used by the content mapper. For a template in a `scenarios.<name>.given…` fluent chain, it checks the corresponding step by position, keyword, and exact surrounding template text. Interpolations act as wildcards, matching the runtime capture behavior. A suffix such as ``.then`the order total is ${OrderTotal} s` `` is reported when the feature step ends at the interpolation.
+
+The rule follows direct fluent chains, including imported aliases and computed scenario names. It skips stored partial builders, destructured methods, and helper-returned builders; runtime matching still validates those patterns when a scenario completes. Intentionally invalid compiler fixtures under `fixtures/` are excluded from the repository lint command.
 
 For editor diagnostics, install the recommended **Oxc** VS Code extension (`oxc.oxc-vscode`). The rule is implemented with Oxlint's `createOnce` plugin API and is syntax-based; it does not use TypeScript type information. Oxlint's JavaScript plugin API is currently experimental, so the exact pinned Oxlint version is `1.89.0`.
 
 ```ts
 import { Effect, Schema } from 'effect';
 import { expect } from 'vitest';
-import { Bdd } from 'vitest-cucumber-context-mapper-prototype/effect';
-import { run, scenarios, steps } from './checkout.feature';
+import { Bdd } from 'vitest-cucumber-effect/effect';
+import { run, scenarios } from './checkout.feature';
 
 const CounterNumber = Schema.FiniteFromString;
 const OrderTotal = Bdd.state(CounterNumber);
@@ -103,32 +144,31 @@ const assertOrderTotal = Effect.gen(function* () {
 });
 
 run(
-  scenarios.buyAnItem(
-    steps.given`the basket total is ${OrderTotal}`(calculateCheckout),
-    steps.when('checkout is calculated')(checkoutResult),
-    steps.then`the order total is ${OrderTotal}`(assertOrderTotal),
-  ),
+  scenarios.buyAnItem
+    .given`the basket total is ${OrderTotal}`(calculateCheckout)
+    .when`checkout is calculated`(checkoutResult)
+    .then`the order total is ${OrderTotal}`(assertOrderTotal),
 );
 ```
 
 `Schema.FiniteFromString` decodes the captured Gherkin string into a finite number. `Bdd.state(CounterNumber)` exposes `actual` from prior state and `expected` from the current step's capture. Interpolating `OrderTotal` itself means `OrderTotal.expected`; inside `Effect.gen`, yield either field or the whole bundle. `Bdd.input` remains available for custom named bundles. The real feature and test are [checkout.feature](example/checkout.feature) and [checkout.test.ts](example/checkout.test.ts).
 
-Ordinary step calls retain literal text and receive compile-time validation. TypeScript does not expose a tagged template's static text as a literal, so interpolated capture templates are checked against the selected scenario at runtime, then decoded by Schema.
+Steps accept real Effect values, not thunk or generator callbacks. Completed plans preserve external service and error inference. Ordinary step calls retain literal text and receive compile-time validation. TypeScript does not expose a tagged template's static text as a literal, so interpolated capture templates are checked against the selected scenario at runtime, then decoded by Schema.
 
 For the editor, install and select the TypeScript 7 Native Preview extension and the local TypeScript SDK as described above. If `./checkout.feature` is unresolved, check **View → Output → TypeScript 7** for the local compiler path and mapper startup errors. In a multi-root workspace, put TypeScript SDK and content-mapper settings in the `.code-workspace` file.
 
-The `.feature` module exports named `run`, `scenarios`, and a `steps` object with `given`, `when`, `then`, `and`, and `but` constructors. `then` is nested under `steps` because a named ESM export called `then` makes the module namespace thenable, which causes module loaders to call it during import. Scenario builders require every step exactly once in feature order. Exact-name keys such as `scenarios['Buy an item']` are available; camelCase aliases are added when unambiguous. Pass all feature scenarios to the same `run(...)` call so upstream completeness validation succeeds.
+The `.feature` module exports only named `run` and `scenarios`; there is no `steps` export. Each scenario exposes only its next actual feature keyword method (`given`, `when`, `then`, `and`, or `but`). Applying its Effect advances to the next stage; only the completed chain is a runnable `ScenarioPlan<R, E>`. Exact-name keys such as `scenarios['Buy an item']` are available; camelCase aliases are added when unambiguous. Pass all feature scenarios to the same `run(...)` call so upstream completeness validation succeeds.
 
-Use `provide(layer)` only when steps need external Effect services. It requires a closed Layer covering all services and manages one runtime per scenario. Simple step-to-step state flow does not need `Ref`.
+Use `.pipe(provide(layer))` on a completed plan only when steps need external Effect services. It requires a closed Layer covering all services and manages one runtime per scenario. Simple step-to-step state flow does not need `Ref`.
 
 Architecture boundaries:
 
 - `mapper/generate.ts`: official `@cucumber/gherkin` parser and literal-code generator.
 - `mapper/adapter.ts`: maps generated literals and source spans through the content-mapper SDK.
-- `mapper/vitest-adapter.ts`: scenario builders, typed step constructors and Effect requirement inference.
+- `mapper/vitest-adapter.ts`: fluent scenario stages and Effect requirement/error inference.
 - `src/effect-input.ts`: schema-backed state and capture tokens plus named input bundles.
 - `src/effect-runtime.ts`: immutable plans, Effect execution, runtime cleanup and the adapter to Vitest Cucumber.
-- `src/vite-plugin.ts`: runtime implementation for imported `.feature` modules, with named `run`, `scenarios`, and nested `steps` exports.
+- `src/vite-plugin.ts`: runtime implementation for imported `.feature` modules, with only named `run` and `scenarios` exports.
 
 The TypeScript mapper supplies types; the Vite plugin supplies runtime code. The upstream library remains unchanged.
 
@@ -136,10 +176,10 @@ The TypeScript mapper supplies types; the Vite plugin supplies runtime code. The
 
 - `mapper/generate.ts`: pure official `@cucumber/gherkin` parser and literal-code generator, using `@cucumber/messages` AST types. Builds private readonly scenario-name and step metadata, including string-valued Examples rows.
 - `mapper/adapter.ts`: only SDK mapping boundary. `MappedCodeBuilder` maps generated name/text literals back to source spans and converts UTF-16 indices to negotiated UTF-8/UTF-16 coordinates.
-- `mapper/vitest-adapter.ts`: adds functional scenario and step constructor types, ordered tuples, and inferred Effect requirements to the generic schema.
+- `mapper/vitest-adapter.ts`: adds `FluentScenario<typeof __feature.scenarios[name].steps>` stages and inferred Effect requirements/errors to the generic schema.
 - `mapper/scenario-aliases.ts`: derives the same scenario keys for virtual types and runtime, reporting collisions.
 - `mapper/server.ts`: `ts-content-mapper@0.1.0` handles TypeScript-initiated initialize/openProject/transform/closeProject lifecycle.
-- `src/vite-plugin.ts`: turns a runtime `.feature` import into a module exporting the schema and functional builders using the exact source Vite transforms.
+- `src/vite-plugin.ts`: turns a runtime `.feature` import into a module exporting only `run` and fluent `scenarios`, using the exact source Vite transforms.
 - `src/effect-runtime.ts`: immutable step/scenario plans, Layer provision, scenario-scoped ManagedRuntime lifecycle, and the internal adapter to upstream callback registration.
 - The TypeScript mapper serves the type-level module; the Vite plugin serves the runtime module. No upstream source is modified.
 
@@ -162,13 +202,14 @@ Two pinned-runtime divergences have explicit tests:
 
 `npm run probe:lsp` launches the pinned `tsc --lsp --stdio` with a **15-second deadline** and `initializationOptions.runExternalCode: true`. It does not change files on disk.
 
-Observed on next:
+Recorded headless evidence on the pinned TypeScript 7.1 build:
 
 - Initialize returned `{"name":"typescript","version":"7.1.0-dev.20261023.1"}`.
 - The server dynamically registered `**/*.feature` for open/change/close, diagnostics, hover, and definition (the capabilities requested by the probe).
 - Valid feature diagnostics were empty.
 - The `.feature` consumer TypeScript file had no diagnostics for the imported functional API.
-- The consumer's `buyAnItem` builder hover exposes its ordered steps, the exact ordinary string step, and broad capture placeholders; completion offers the scenario builder and valid Given text.
+- The consumer's `buyAnItem` hover exposes only the initial `given` stage through `FluentStepTag`. Completion offers scenario names, initial `given` (without `when`), and the exact next Given text.
+- After Given, completion offers When without Given or Then. An in-memory When-before-Given edit produces TS2339, and restoring the valid chain clears it.
 - An in-memory scenario rename produces consumer diagnostics; an alias collision produces a mapped code 3 diagnostic and the server recovers after restoring valid source.
 - Hover over `Buy an item` returned its readonly step metadata, mapped to source range **line 1, characters 12–23** (zero-based LSP coordinates).
 - An in-memory malformed edit returned `source: "gherkin", code: 1`, message `(6:4): inconsistent cell count within the table`, at zero-based **line 5, character 3**.

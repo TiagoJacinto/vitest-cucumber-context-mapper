@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { generate } from '../mapper/generate.ts';
-import { scenarioAliases } from '../mapper/scenario-aliases.ts';
+import { generate } from '../dist/mapper/generate.js';
+import { scenarioAliases } from '../dist/mapper/scenario-aliases.js';
 
 const KEYWORDS = new Map([
   ['given', 'Given'],
@@ -58,42 +58,54 @@ function matchesStepTemplate(quasis, text) {
   return new RegExp(`${pattern}$`).test(text);
 }
 
-function stepTag(node, bindings) {
-  if (node.type !== 'TaggedTemplateExpression' || node.tag.type !== 'MemberExpression') return undefined;
-  const keywordName = staticProperty(node.tag);
-  const keyword = KEYWORDS.get(keywordName);
-  if (!keyword || node.tag.object.type !== 'Identifier') return undefined;
-  const feature = bindings.get(node.tag.object.name);
-  return feature ? { keyword, feature } : undefined;
-}
-
-function scenarioCallFor(node, bindings) {
-  let child = node;
-  let parent = child.parent;
-  while (parent) {
-    if (parent.type === 'CallExpression' && parent.callee.type === 'MemberExpression') {
-      const scenarioName = staticProperty(parent.callee);
-      const feature = parent.callee.object.type === 'Identifier'
-        ? bindings.get(parent.callee.object.name)
-        : undefined;
-      if (feature && scenarioName && Object.hasOwn(feature.aliases, scenarioName)) {
-        let argument = node;
-        while (argument.parent && argument.parent !== parent) argument = argument.parent;
-        return {
-          feature,
-          scenarioName: feature.aliases[scenarioName],
-          stepIndex: parent.arguments.indexOf(argument),
-        };
-      }
-    }
-    child = parent;
-    parent = parent.parent;
+// Resolve the actual import variable, rather than matching an identifier's spelling.
+function importedFeature(identifier, bindings, context) {
+  if (identifier?.type !== 'Identifier') return undefined;
+  const binding = bindings.get(identifier.name);
+  if (!binding) return undefined;
+  for (let scope = context.sourceCode.getScope(identifier); scope; scope = scope.upper) {
+    const variable = scope.set.get(identifier.name);
+    if (variable) return variable.defs.some(def => def.node === binding.specifier)
+      ? binding.feature
+      : undefined;
   }
   return undefined;
 }
 
+// Only direct receiver chains are supported. Stored builders, destructured
+// methods, wrappers, and chains passed through helpers are deliberately not
+// followed: doing so would require data-flow analysis, not AST ancestry.
+function fluentReceiver(node, bindings, context) {
+  if (node?.type === 'MemberExpression') {
+    const feature = importedFeature(node.object, bindings, context);
+    const name = staticProperty(node);
+    if (feature && name && Object.hasOwn(feature.aliases, name)) {
+      return { feature, scenarioName: feature.aliases[name], stepIndex: 0 };
+    }
+    return undefined;
+  }
+  if (node?.type !== 'CallExpression' || node.arguments.length !== 1) return undefined;
+  const invocation = node.callee;
+  const method = invocation.type === 'TaggedTemplateExpression'
+    ? invocation.tag
+    : invocation.type === 'CallExpression' && invocation.arguments.length === 1
+      ? invocation.callee
+      : undefined;
+  if (method?.type !== 'MemberExpression' || !KEYWORDS.has(staticProperty(method))) return undefined;
+  const previous = fluentReceiver(method.object, bindings, context);
+  return previous ? { ...previous, stepIndex: previous.stepIndex + 1 } : undefined;
+}
+
+function stepTag(node, scenarioBindings, context) {
+  if (node.tag.type !== 'MemberExpression') return undefined;
+  const keyword = KEYWORDS.get(staticProperty(node.tag));
+  if (!keyword) return undefined;
+  const scenario = fluentReceiver(node.tag.object, scenarioBindings, context);
+  if (scenario) return { keyword, feature: scenario.feature, scenario };
+  return undefined;
+}
+
 function featureImports(program, fileName) {
-  const stepBindings = new Map();
   const scenarioBindings = new Map();
 
   for (const statement of program.body) {
@@ -106,12 +118,11 @@ function featureImports(program, fileName) {
     for (const specifier of statement.specifiers) {
       if (specifier.type !== 'ImportSpecifier') continue;
       const imported = importedName(specifier);
-      if (imported === 'steps') stepBindings.set(specifier.local.name, feature);
-      if (imported === 'scenarios') scenarioBindings.set(specifier.local.name, feature);
+      if (imported === 'scenarios') scenarioBindings.set(specifier.local.name, { feature, specifier });
     }
   }
 
-  return { stepBindings, scenarioBindings };
+  return scenarioBindings;
 }
 
 const validStepTemplate = {
@@ -121,24 +132,20 @@ const validStepTemplate = {
     schema: [],
   },
   createOnce(context) {
-    let stepBindings = new Map();
     let scenarioBindings = new Map();
 
     return {
       before() {
-        stepBindings = new Map();
         scenarioBindings = new Map();
       },
       Program(program) {
-        const bindings = featureImports(program, context.filename);
-        stepBindings = bindings.stepBindings;
-        scenarioBindings = bindings.scenarioBindings;
+        scenarioBindings = featureImports(program, context.filename);
       },
       TaggedTemplateExpression(node) {
-        const tag = stepTag(node, stepBindings);
+        const tag = stepTag(node, scenarioBindings, context);
         if (!tag) return;
 
-        const scenario = scenarioCallFor(node, scenarioBindings);
+        const scenario = tag.scenario;
         const scenarioSteps = scenario
           ? tag.feature.schema.scenarios[scenario.scenarioName]?.steps ?? []
           : undefined;

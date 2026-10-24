@@ -14,7 +14,6 @@ const source = `Feature: Isolated effects
   Then the counter is one
 `;
 const schema = generate(source).schema;
-const feature = createFeature(source, schema, { first: 'First', second: 'Second' });
 class Counter extends Context.Service<Counter, Ref.Ref<number>>()('Counter') {}
 let acquired = 0;
 let released = 0;
@@ -24,15 +23,15 @@ const layer = Layer.effect(Counter, Effect.acquireRelease(
   () => Effect.sync(() => { released++; }),
 ));
 const plans = ['First', 'Second'].map(name => createScenario(source, schema, name, [
-  feature.given('a fresh counter')(Effect.gen(function* () {
+  step('Given', 'a fresh counter')(Effect.gen(function* () {
     expect(yield* Ref.get(yield* Counter)).toBe(0);
     events.push(`${name}:given`);
   })),
-  feature.when('incremented')(Effect.gen(function* () {
+  step('When', 'incremented')(Effect.gen(function* () {
     yield* Ref.update(yield* Counter, n => n + 1);
     events.push(`${name}:when`);
   })),
-  feature.then('the counter is one')(Effect.gen(function* () {
+  step('Then', 'the counter is one')(Effect.gen(function* () {
     expect(yield* Ref.get(yield* Counter)).toBe(1);
     events.push(`${name}:then`);
   })),
@@ -60,14 +59,16 @@ it('validates descriptor count, order, keyword and text before registration', ()
 
 it('matches tagged capture patterns against the selected feature step', () => {
   const text = 'Feature: Totals\n Scenario: Show total\n  Given the total is 12.5\n';
-  const feature = createFeature(text, generate(text).schema, { showTotal: 'Show total' });
+  const schema = {
+    scenarioNames: ['Show total'],
+    scenarios: { 'Show total': { steps: [{ keyword: 'Given', text: 'the total is 12.5' }], examples: [] } },
+  } as const;
+  const feature = createFeature(text, schema, { showTotal: 'Show total' });
   const total = capture(Schema.FiniteFromString);
-  const valid = feature.given`the total is ${total}`(Effect.void);
-  const plan = createScenario(text, generate(text).schema, 'Show total', [valid]);
+  const plan = feature.scenarios.showTotal.given`the total is ${total}`(Effect.void);
   expect(plan.steps[0]?.text).toBe('the total is 12.5');
 
-  const invalid = feature.given`a different prefix ${total}`(Effect.void);
-  expect(() => createScenario(text, generate(text).schema, 'Show total', [invalid])).toThrow(
+  expect(() => feature.scenarios.showTotal.given`a different prefix ${total}`(Effect.void)).toThrow(
     'step 1 must match Given the total is 12.5',
   );
 });
@@ -105,7 +106,7 @@ it('retries the failed step with the same resource, continues and releases the s
 });
 
 // Compile-time contracts: values retain service requirements through pipe.
-if (false) {
+const compileTimeContracts = () => {
   const dependent = createScenario(source, schema, 'First', [step('Given', 'a fresh counter')(Counter)]);
   // @ts-expect-error Unprovided service requirements cannot be run.
   run(dependent);
@@ -113,24 +114,36 @@ if (false) {
   dependent.pipe(provide(Layer.empty));
   // @ts-expect-error Open layers cannot be installed as a scenario runtime.
   provide(Layer.effect(Counter, Counter));
-}
+};
+void compileTimeContracts;
 
-const plainSource = 'Feature: Dependency free\n Scenario: Plain\n  Given a lazy effect\n  And shared progress\n  When composed\n  But never concurrent\n  Then it has run\n';
-const plain = createFeature(plainSource, generate(plainSource).schema, { plain: 'Plain' });
+const plainSchema = {
+  scenarioNames: ['Plain'],
+  scenarios: { Plain: { steps: [
+    { keyword: 'Given', text: 'a lazy effect' },
+    { keyword: 'And', text: 'shared progress' },
+    { keyword: 'When', text: 'composed' },
+    { keyword: 'But', text: 'never concurrent' },
+    { keyword: 'Then', text: 'it has run' },
+  ], examples: [] } },
+} as const;
+const plainSource = 'Feature: Dependency free\n Scenario: Plain\n' + plainSchema.scenarios.Plain.steps
+  .map(item => `  ${item.keyword} ${item.text}\n`).join('');
+const plain = createFeature(plainSource, plainSchema, { plain: 'Plain' });
 let plainRan = false;
 const plainEvents: string[] = [];
-const plainPlan = plain.scenarios.plain!(
-  plain.given('a lazy effect')(Effect.sync(() => { plainRan = true; plainEvents.push('Given'); })),
-  plain.and('shared progress')(Effect.sync(() => { expect(plainEvents).toEqual(['Given']); plainEvents.push('And'); })),
-  plain.when('composed')(Effect.sync(() => { expect(plainEvents).toEqual(['Given', 'And']); plainEvents.push('When'); })),
-  plain.but('never concurrent')(Effect.sync(() => { expect(plainEvents).toEqual(['Given', 'And', 'When']); plainEvents.push('But'); })),
-  plain.then('it has run')(Effect.sync(() => {
+const plainPlan = plain.scenarios.plain
+  .given('a lazy effect')(Effect.sync(() => { plainRan = true; plainEvents.push('Given'); }))
+  .and('shared progress')(Effect.sync(() => { expect(plainEvents).toEqual(['Given']); plainEvents.push('And'); }))
+  .when('composed')(Effect.sync(() => { expect(plainEvents).toEqual(['Given', 'And']); plainEvents.push('When'); }))
+  .but('never concurrent')(Effect.sync(() => { expect(plainEvents).toEqual(['Given', 'And', 'When']); plainEvents.push('But'); }))
+  .then('it has run')(Effect.sync(() => {
     expect(plainRan).toBe(true);
     expect(plainEvents).toEqual(['Given', 'And', 'When', 'But']);
-  })),
-);
+  }));
 expect(plainRan).toBe(false);
 expect(Object.isFrozen(plain.scenarios)).toBe(true);
+expect(Object.isFrozen(plain.scenarios.plain)).toBe(true);
 expect(Object.isFrozen(plainPlan)).toBe(true);
 expect(Object.isFrozen(plainPlan.steps)).toBe(true);
 run(plainPlan);

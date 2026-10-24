@@ -13,7 +13,6 @@ import {
   previous,
   state,
   type CaptureValue,
-  type CaptureToken,
   type InputContextRequirement,
 } from './effect-input.ts';
 
@@ -64,6 +63,31 @@ export interface StepTag<K extends Keyword, Text extends string = string> {
   <const T extends Text>(text: T): StepBuilder<K, T>;
   (strings: TemplateStringsArray, ...captures: readonly CaptureValue[]): StepBuilder<K, string, true>;
 }
+
+interface FluentStepMetadata {
+  readonly keyword: string;
+  readonly text: string;
+}
+
+interface ApplyFluentStep<Remaining extends readonly FluentStepMetadata[], R, E> {
+  <A, NextError, NextRequirements>(
+    effect: Effect.Effect<A, NextError, NextRequirements>,
+  ): FluentScenario<Remaining, R | NextRequirements, E | NextError>;
+}
+
+export interface FluentStepTag<Text extends string, Remaining extends readonly FluentStepMetadata[], R, E> {
+  (text: Text): ApplyFluentStep<Remaining, R, E>;
+  (strings: TemplateStringsArray, ...captures: readonly CaptureValue[]): ApplyFluentStep<Remaining, R, E>;
+}
+
+/** Only the next source step is available; only a complete chain becomes runnable. */
+export type FluentScenario<Remaining extends readonly FluentStepMetadata[], R = never, E = never> =
+  Remaining extends readonly [] ? ScenarioPlan<R, E>
+    : Remaining extends readonly [infer Head extends FluentStepMetadata, ...infer Tail extends readonly FluentStepMetadata[]]
+      ? Head['keyword'] extends Keyword
+        ? { readonly [Method in Lowercase<Head['keyword']>]: FluentStepTag<Head['text'], Tail, R, E> }
+        : never
+      : unknown;
 
 export interface ScenarioPlan<out R = never, out E = never> extends Pipeable.Pipeable {
   readonly [planBrand]: true;
@@ -197,16 +221,48 @@ export function createScenario<R = never, E = never>(
   });
 }
 
-export function createFeature(source: string, schema: FeatureSchema, aliases: Readonly<Record<string, string>>) {
-  return Object.freeze({
-    scenarios: Object.freeze(Object.fromEntries(Object.entries(aliases).map(([alias, name]) => [alias,
-      <R = never, E = never>(...steps: readonly Step<Keyword, string, R, E, boolean>[]) => createScenario(source, schema, name, steps)]))),
-    given: stepTag('Given'),
-    when: stepTag('When'),
-    then: stepTag('Then'),
-    and: stepTag('And'),
-    but: stepTag('But'),
-  });
+type FeatureScenarios<Schema extends FeatureSchema, Aliases extends Readonly<Record<string, keyof Schema['scenarios'] & string>>> = {
+  readonly [Alias in keyof Aliases]: FluentScenario<Schema['scenarios'][Aliases[Alias]]['steps']>;
+};
+
+export function createFeature<
+  const Schema extends FeatureSchema,
+  const Aliases extends Readonly<Record<string, keyof Schema['scenarios'] & string>>,
+>(source: string, schema: Schema, aliases: Aliases) {
+  validateProfile(source);
+  const tags: Readonly<Record<Keyword, StepTag<Keyword>>> = {
+    Given: stepTag('Given'),
+    When: stepTag('When'),
+    Then: stepTag('Then'),
+    And: stepTag('And'),
+    But: stepTag('But'),
+  };
+
+  function scenario(name: string): unknown {
+    const expected = Object.hasOwn(schema.scenarios, name) ? schema.scenarios[name] : undefined;
+    if (!expected) throw new Error(`Unknown scenario: ${name}`);
+    const expectedSteps = expected.steps;
+
+    function next(index: number, steps: readonly Step<Keyword, string, unknown, unknown, boolean>[]): unknown {
+      const current = expectedSteps[index];
+      if (!current) return createScenario(source, schema, name, steps);
+      const tag = Object.entries(tags).find(([keyword]) => keyword === current.keyword)?.[1];
+      if (!tag) throw new Error(`Unsupported keyword: ${current.keyword}`);
+      const register = (first: string | TemplateStringsArray, ...captures: readonly CaptureValue[]) => {
+        const build = typeof first === 'string' ? tag(first) : tag(first, ...captures);
+        return (effect: Effect.Effect<unknown, unknown, unknown>) => next(index + 1, [...steps, build(effect)]);
+      };
+      return Object.freeze({ [current.keyword.toLowerCase()]: register });
+    }
+
+    return next(0, []);
+  }
+
+  // The parser's dynamic schema and the mapper's literal schema share this factory.
+  // Construction above follows the exact tuple used by FluentScenario's declaration.
+  const scenarios = Object.freeze(Object.fromEntries(Object.entries(aliases).map(([alias, name]) =>
+    [alias, scenario(name)]))) as FeatureScenarios<Schema, Aliases>;
+  return Object.freeze({ scenarios });
 }
 
 interface Execution {

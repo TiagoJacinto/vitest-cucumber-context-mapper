@@ -16,7 +16,8 @@ describe('official Gherkin AST to literal schema', () => {
     expect(genericCode).not.toContain('typedDescribeFeature');
     expect(code).toContain('export declare const scenarios: __ScenarioBuilders;');
     expect(code).toContain('export declare const run: typeof __run;');
-    expect(code).toContain('export declare const steps: __StepApi;');
+    expect(code).not.toContain('export declare const steps');
+    expect(code).toContain('FluentScenario<typeof __feature.scenarios["A"][\'steps\']>');
   });
 
   it('generates empty modules for empty input and empty features', () => {
