@@ -1,0 +1,6 @@
+{
+  "jsPlugins": ["./oxlint/gherkin-steps.mjs"],
+  "rules": {
+    "gherkin-feature/valid-step-template": "error"
+  }
+}

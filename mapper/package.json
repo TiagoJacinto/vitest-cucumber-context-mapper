@@ -1,0 +1,20 @@
+{
+  "name": "gherkin-content-mapper",
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {
+    "@cucumber/gherkin": "42.0.1",
+    "@cucumber/messages": "34.2.1",
+    "ts-content-mapper": "0.1.0"
+  },
+  "peerDependencies": {
+    "@amiceli/vitest-cucumber": "^8.0.0"
+  },
+  "typescript": {
+    "contentMapper": {
+      "exec": ["node", "server.ts"],
+      "compilerOptions": [],
+      "dynamicConfig": false
+    }
+  }
+}
