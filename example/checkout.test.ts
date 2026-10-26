@@ -9,10 +9,12 @@ const { actual, expected } = OrderTotal;
 const calculateCheckout = (total: number) => total;
 
 run(
-  scenarios.buyAnItem.given`the basket total is ${OrderTotal}`(Bdd.identity)
-    .when`checkout is calculated`(calculateCheckout).then`the order total is ${OrderTotal}`(
-    Bdd.gen(function* () {
-      expect(yield* actual).toBe(yield* expected);
-    }),
-  ),
+  scenarios.buyAnItem
+    .given`the basket total is ${OrderTotal}`(Bdd.identity)
+    .when`checkout is calculated`(calculateCheckout)
+    .then`the order total is ${OrderTotal}`(
+      Bdd.gen(function* () {
+        expect(yield* actual).toBe(yield* expected);
+      }),
+    ),
 );

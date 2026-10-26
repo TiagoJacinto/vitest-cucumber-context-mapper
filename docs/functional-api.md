@@ -21,9 +21,11 @@ run(
   scenarios.buyAnItem
     .given`the basket total is ${OrderTotal}`(Bdd.identity)
     .when`checkout is calculated`((total: number) => total)
-    .then`the order total is ${OrderTotal}`(Bdd.gen(function* () {
-      expect(yield* actual).toBe(yield* expected);
-    })),
+    .then`the order total is ${OrderTotal}`(
+      Bdd.gen(function* () {
+        expect(yield* actual).toBe(yield* expected);
+      }),
+    ),
 );
 ```
 

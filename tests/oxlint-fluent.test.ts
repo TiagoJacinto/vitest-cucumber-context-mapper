@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -100,4 +100,26 @@ scenarios.repeatGiven.when\`the first value\`(callback);`);
   for (const diagnostic of result.diagnostics) {
     expect(diagnostic.message).toContain('step 1 must match Given "the first value"');
   }
+});
+
+it('formats fluent chains once and accepts the formatted result', () => {
+  const config = resolve(directory, 'format-config.json');
+  const filename = resolve(directory, 'format-fixture.ts');
+  writeFileSync(config, JSON.stringify({
+    jsPlugins: [resolve(root, 'oxlint/gherkin-steps.mjs')],
+    categories: { correctness: 'off' },
+    rules: { 'gherkin-feature/format-fluent-chain': 'error' },
+  }));
+  writeFileSync(filename, `import { scenarios } from './steps.feature';
+scenarios.repeatGiven.given\`the first value\`(callback).given\`the second value\`(callback);\n`);
+  const run = (fix: boolean) => spawnSync(resolve(root, 'node_modules/.bin/oxlint'), [
+    '--config', config, ...(fix ? ['--fix'] : []), filename,
+  ], { encoding: 'utf8' });
+  expect(run(true).status).toBe(0);
+  expect(readFileSync(filename, 'utf8')).toBe(`import { scenarios } from './steps.feature';
+scenarios.repeatGiven
+  .given\`the first value\`(callback)
+  .given\`the second value\`(callback);\n`);
+  expect(run(false).status).toBe(0);
+  expect(run(true).status).toBe(0);
 });

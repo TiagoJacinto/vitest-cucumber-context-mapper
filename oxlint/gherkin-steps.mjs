@@ -96,6 +96,94 @@ function fluentReceiver(node, bindings, context) {
   return previous ? { ...previous, stepIndex: previous.stepIndex + 1 } : undefined;
 }
 
+function taggedFluentChain(node, bindings, context) {
+  const steps = [];
+  let current = node;
+
+  while (current?.type === 'CallExpression' && current.arguments.length === 1) {
+    const tagged = current.callee;
+    if (tagged?.type !== 'TaggedTemplateExpression' || tagged.tag.type !== 'MemberExpression') break;
+    if (!KEYWORDS.has(staticProperty(tagged.tag))) break;
+
+    steps.unshift({
+      tagged,
+      receiver: tagged.tag.object,
+      callback: current.arguments[0],
+    });
+    current = tagged.tag.object;
+  }
+
+  if (steps.length === 0 || current?.type !== 'MemberExpression') return undefined;
+  const name = staticProperty(current);
+  const feature = importedFeature(current.object, bindings, context);
+  if (!feature || !name || !Object.hasOwn(feature.aliases, name)) return undefined;
+  return { base: current, steps };
+}
+
+function lineIndent(source, offset) {
+  const lineStart = source.lastIndexOf('\n', offset - 1) + 1;
+  return source.slice(lineStart, offset).match(/^[\t ]*/)?.[0] ?? '';
+}
+
+function indentCallback(callback, callbackText, source, targetIndent, context, eol) {
+  const sourceIndent = lineIndent(source, callback.range[0]);
+  const tokens = context.sourceCode.getTokens(callback, { includeComments: true });
+  const lines = callbackText.split(/\r\n|\n/);
+  let offset = callback.range[0];
+
+  return lines.map((line, index) => {
+    if (index === 0) {
+      offset += line.length + eol.length;
+      return `${targetIndent}${line.trimStart()}`;
+    }
+
+    const protectedLine = tokens.some(token => token.range[0] <= offset && offset < token.range[1]);
+    const leading = line.match(/^[\t ]*/)?.[0] ?? '';
+    const result = !line.trim() || protectedLine
+      ? line
+      : `${targetIndent}${leading.startsWith(sourceIndent) ? leading.slice(sourceIndent.length) : leading}${line.slice(leading.length)}`;
+    offset += line.length + eol.length;
+    return result;
+  }).join(eol);
+}
+
+function formatTaggedFluentChain(chain, context) {
+  const source = context.sourceCode.text;
+  const baseIndent = lineIndent(source, chain.base.range[0]);
+  const stepIndent = `${baseIndent}  `;
+  const callbackIndent = `${stepIndent}  `;
+  const eol = source.includes('\r\n') ? '\r\n' : '\n';
+  let formatted = context.sourceCode.getText(chain.base);
+
+  for (const step of chain.steps) {
+    const callbackText = context.sourceCode.getText(step.callback);
+    const methodText = source.slice(step.receiver.range[1], step.tagged.range[1]).trimStart();
+    const callOpen = source.slice(step.tagged.range[1], step.callback.range[0]).trimEnd();
+
+    if (callbackText.includes('\n') || callbackText.includes('\r')) {
+      const indented = indentCallback(step.callback, callbackText, source, callbackIndent, context, eol);
+      formatted += `${eol}${stepIndent}${methodText}${callOpen}${eol}${indented},${eol}${stepIndent})`;
+    } else {
+      formatted += `${eol}${stepIndent}${methodText}${callOpen}${callbackText})`;
+    }
+  }
+
+  return formatted;
+}
+
+function isFluentReceiver(node) {
+  const method = node.parent;
+  const tagged = method?.parent;
+  const call = tagged?.parent;
+  return method?.type === 'MemberExpression'
+    && method.object === node
+    && KEYWORDS.has(staticProperty(method))
+    && tagged?.type === 'TaggedTemplateExpression'
+    && tagged.tag === method
+    && call?.type === 'CallExpression'
+    && call.callee === tagged;
+}
+
 function stepTag(node, scenarioBindings, context) {
   if (node.tag.type !== 'MemberExpression') return undefined;
   const keyword = KEYWORDS.get(staticProperty(node.tag));
@@ -170,7 +258,50 @@ const validStepTemplate = {
   },
 };
 
+const formatFluentChain = {
+  meta: {
+    type: 'layout',
+    docs: { description: 'Format tagged fluent steps from an imported Gherkin feature' },
+    fixable: 'code',
+    schema: [],
+  },
+  createOnce(context) {
+    let scenarioBindings = new Map();
+
+    return {
+      before() {
+        scenarioBindings = new Map();
+      },
+      Program(program) {
+        scenarioBindings = featureImports(program, context.filename);
+      },
+      CallExpression(node) {
+        if (isFluentReceiver(node)) return;
+        const chain = taggedFluentChain(node, scenarioBindings, context);
+        if (!chain) return;
+
+        if (context.sourceCode.getAllComments().some(comment =>
+          comment.range[0] >= chain.base.range[0] && comment.range[1] <= node.range[1])) return;
+
+        const formatted = formatTaggedFluentChain(chain, context);
+        if (formatted === context.sourceCode.getText(node)) return;
+
+        context.report({
+          node,
+          message: 'Put each tagged fluent step on its own line',
+          fix(fixer) {
+            return fixer.replaceText(node, formatted);
+          },
+        });
+      },
+    };
+  },
+};
+
 export default {
   meta: { name: 'gherkin-feature' },
-  rules: { 'valid-step-template': validStepTemplate },
+  rules: {
+    'valid-step-template': validStepTemplate,
+    'format-fluent-chain': formatFluentChain,
+  },
 };
