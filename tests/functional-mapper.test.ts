@@ -25,7 +25,7 @@ function runtimeCode(text: string, id = '/shopping.feature') {
 describe('functional BDD feature mapper', () => {
   it('ties exact-name and camelCase fluent builders to their source step tuples', () => {
     const code = transformVitestFeature(source).text;
-    expect(code).toContain("import type { FluentScenario, run as __run } from 'vitest-cucumber-effect/bdd'");
+    expect(code).toContain("import type { FluentScenario, run as __run } from 'vitest-cucumber-context-mapper/bdd'");
     const tuple = 'FluentScenario<typeof __feature.scenarios["Buy an item"][\'steps\']>';
     expect(code).toContain(`readonly "Buy an item": ${tuple}`);
     expect(code).toContain(`readonly "buyAnItem": ${tuple}`);
@@ -54,7 +54,7 @@ describe('functional BDD feature mapper', () => {
 
   it('wires the original source and shared aliases to the public runtime', () => {
     const code = runtimeCode(source, '/shopping.feature?import');
-    expect(code).toContain("import { createFeature as __createFeature, run as __run } from 'vitest-cucumber-effect/bdd'");
+    expect(code).toContain("import { createFeature as __createFeature, run as __run } from 'vitest-cucumber-context-mapper/bdd'");
     expect(code).toContain(`const __feature = __createFeature(${JSON.stringify(source)}, __schema, __aliases)`);
     expect(code).toContain('export const scenarios = __feature.scenarios;');
     expect(code).toContain('export const run = __run;');

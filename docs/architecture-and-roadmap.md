@@ -69,7 +69,7 @@ The TypeScript mapper creates a type-bearing module for each `.feature` file. A 
 ~~~ts
 import { z } from 'zod';
 import { expect } from 'vitest';
-import { Bdd } from 'vitest-cucumber-effect/bdd';
+import { Bdd } from 'vitest-cucumber-context-mapper/bdd';
 import { run, scenarios } from './checkout.feature';
 
 const OrderTotal = Bdd.state(z.coerce.number().finite());
@@ -85,7 +85,7 @@ run(
 );
 ~~~
 
-The public runtime entry is `vitest-cucumber-effect/bdd`; the package name is temporarily unchanged. Step implementations are ordinary callbacks or `Bdd.gen` implementations. The first stage receives decoded captures; subsequent stages receive the previous result followed by captures in template order. The assertion can equivalently use `(actual, expected) => { expect(actual).toBe(expected); }`.
+The public runtime entry is `vitest-cucumber-context-mapper/bdd`. Step implementations are ordinary callbacks or `Bdd.gen` implementations. The first stage receives decoded captures; subsequent stages receive the previous result followed by captures in template order. The assertion can equivalently use `(actual, expected) => { expect(actual).toBe(expected); }`.
 
 Each fluent stage exposes only the next actual feature keyword method; ordinary string calls require its exact next literal. The mapper generates `FluentScenario<typeof __feature.scenarios[name].steps>`; only completed chains are runnable. `Bdd.state(schema)` uses Standard Schema to pair prior state with the expected capture, and interpolates as that capture. Users choose their schema library; the example uses Zod coercion because feature captures are strings. The runtime awaits callback results, generator iteration and schema validation. Capture-token identity is structural in TypeScript: tokens with the same decoded type cannot be distinguished statically, so expected-capture identity is checked at runtime. Compiler, Vitest and clean installed-package checks pass.
 

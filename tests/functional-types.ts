@@ -1,6 +1,6 @@
 // Checked through the real content mapper; this module is not executed by Vitest.
 import { z } from 'zod';
-import { Bdd } from 'vitest-cucumber-effect/bdd';
+import { Bdd } from 'vitest-cucumber-context-mapper/bdd';
 import { scenarios } from './runtime-assets/compiler.feature';
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 const afterGiven = scenarios.buyAnItem.given('the basket total is 12.5')(() => 12.5);
