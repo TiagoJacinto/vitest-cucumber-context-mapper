@@ -157,7 +157,7 @@ function formatTaggedFluentChain(chain, context) {
 
   for (const step of chain.steps) {
     const callbackText = context.sourceCode.getText(step.callback);
-    const methodText = source.slice(step.receiver.range[1], step.tagged.range[1]);
+    const methodText = source.slice(step.receiver.range[1], step.tagged.range[1]).trimStart();
     const callOpen = source.slice(step.tagged.range[1], step.callback.range[0]).trimEnd();
 
     if (callbackText.includes('\n') || callbackText.includes('\r')) {
