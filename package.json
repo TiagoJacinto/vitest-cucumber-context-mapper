@@ -45,6 +45,7 @@
     "verify:package": "node scripts/verify-package.mjs",
     "prelint": "npm run build",
     "lint": "oxlint",
+    "lint:fix": "npm run build && oxlint --fix",
     "prepack": "npm run build",
     "prepublishOnly": "npm run verify",
     "preprobe:lsp": "npm run build",

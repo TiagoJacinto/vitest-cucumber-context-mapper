@@ -120,6 +120,20 @@ The rule follows direct fluent chains, including imported aliases and computed s
 
 For editor diagnostics, install the recommended **Oxc** VS Code extension (`oxc.oxc-vscode`). The rule is implemented with Oxlint's `createOnce` plugin API and is syntax-based; it does not use TypeScript type information. Oxlint's JavaScript plugin API is currently experimental, so the exact pinned Oxlint version is `1.89.0`.
 
+The `gherkin-feature/format-fluent-chain` rule provides a targeted formatter for direct tagged-template chains from imported `.feature` files. Enable it alongside `valid-step-template`, then run `oxlint --fix` (or `npm run lint:fix` in this repository) to put each step on its own line and indent multiline callbacks. The rule is fixable and available as an editor code action.
+
+Consumer configuration:
+
+```json
+{
+  "jsPlugins": ["vitest-cucumber-effect/oxlint"],
+  "rules": {
+    "gherkin-feature/valid-step-template": "error",
+    "gherkin-feature/format-fluent-chain": "error"
+  }
+}
+```
+
 ```ts
 import { z } from 'zod';
 import { expect } from 'vitest';
@@ -133,9 +147,11 @@ run(
   scenarios.buyAnItem
     .given`the basket total is ${OrderTotal}`(Bdd.identity)
     .when`checkout is calculated`((total: number) => total)
-    .then`the order total is ${OrderTotal}`(Bdd.gen(function* () {
-      expect(yield* actual).toBe(yield* expected);
-    })),
+    .then`the order total is ${OrderTotal}`(
+      Bdd.gen(function* () {
+        expect(yield* actual).toBe(yield* expected);
+      }),
+    ),
 );
 ```
 
