@@ -20,7 +20,8 @@
     "mapper/*.ts",
     "oxlint/*.mjs",
     "README.md",
-    "docs/*.md"
+    "docs/*.md",
+    "scripts/generate-tests.mjs"
   ],
   "exports": {
     "./vite": {
@@ -31,6 +32,10 @@
     "./bdd": {
       "types": "./dist/src/effect-runtime.d.ts",
       "default": "./dist/src/effect-runtime.js"
+    },
+    "./gherkin": {
+      "types": "./dist/src/gherkin.d.ts",
+      "default": "./dist/src/gherkin.js"
     }
   },
   "typescript": {
@@ -44,7 +49,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json --runExternalCode",
+    "build": "node scripts/build.mjs",
     "pretypecheck": "npm run build",
     "typecheck": "tsc --noEmit --runExternalCode",
     "pretest": "npm run build",
@@ -59,27 +64,34 @@
     "prepublishOnly": "npm run verify:release",
     "preprobe:lsp": "npm run build",
     "probe:lsp": "node scripts/probe-lsp.mjs",
-    "probe:fluent": "npm run verify"
+    "probe:fluent": "npm run verify",
+    "pretest:browser": "npm run build",
+    "test:browser": "vitest run --config vitest.browser.config.ts"
   },
   "dependencies": {
     "@cucumber/gherkin": "42.0.1",
     "@cucumber/messages": "34.2.1",
-    "ts-content-mapper": "0.1.0",
-    "@standard-schema/spec": "1.1.0"
+    "@standard-schema/spec": "1.1.0",
+    "parsecurrency": "1.1.1",
+    "ts-content-mapper": "0.1.0"
   },
   "peerDependencies": {
-    "@amiceli/vitest-cucumber": "^8.0.0",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
   },
   "devDependencies": {
     "@amiceli/vitest-cucumber": "8.0.0",
     "@types/node": "24.10.0",
+    "@vitest/browser-playwright": "5.0.5",
     "gherkin-content-mapper": "file:./mapper",
     "oxlint": "1.89.0",
+    "playwright": "1.64.1",
     "typescript": "7.1.0-dev.20261023.1",
     "vite": "8.3.5",
     "vitest": "5.0.5",
     "zod": "4.6.7"
+  },
+  "bin": {
+    "gherkin-tests": "scripts/generate-tests.mjs"
   }
 }

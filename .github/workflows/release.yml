@@ -28,9 +28,9 @@ jobs:
       issues: write
       actions: write
     outputs:
-      created: ${{ steps.release.outputs.release_created }}
-      sha: ${{ steps.release.outputs.sha }}
-      tag: ${{ steps.release.outputs.tag_name }}
+      created: ${{ steps.tag.outputs.release_created || steps.release.outputs.release_created }}
+      sha: ${{ steps.tag.outputs.sha || steps.release.outputs.sha }}
+      tag: ${{ steps.tag.outputs.tag_name || steps.release.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
         id: release
@@ -39,13 +39,30 @@ jobs:
           target-branch: main
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-      # Explicit dispatch runs CI on bot-created PRs without a personal access token.
-      - name: Validate the release PR
+      # The release PR only bumps versions and the changelog; the checks job verifies
+      # the tagged commit before publishing. A GITHUB_TOKEN merge does not retrigger
+      # this workflow, so the release is tagged in this run.
+      - name: Merge the release PR
         if: steps.release.outputs.pr != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
-        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$RELEASE_BRANCH"
+          RELEASE_PR: ${{ steps.release.outputs.pr }}
+        run: |
+          number=$(jq -r .number <<< "$RELEASE_PR")
+          for attempt in 1 2 3 4 5 6; do
+            gh pr merge "$number" --repo "$GITHUB_REPOSITORY" --squash --delete-branch && exit 0
+            sleep 10
+          done
+          exit 1
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+        id: tag
+        if: steps.release.outputs.pr != ''
+        with:
+          token: ${{ github.token }}
+          target-branch: main
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          skip-github-pull-request: true
 
   checks:
     needs: release

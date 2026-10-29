@@ -1,26 +1,15 @@
 import { afterAll, expect } from 'vitest';
-import { createFeature, run } from '../../src/effect-runtime.ts';
-const source = 'Feature: Retry state\n Scenario: Retries\n  Given a resource\n  When it fails once\n  Then continues\n';
-const schema = { scenarioNames: ['Retries'], scenarios: { Retries: { steps: [
-  { keyword: 'Given', text: 'a resource' }, { keyword: 'When', text: 'it fails once' }, { keyword: 'Then', text: 'continues' },
-], examples: [] } } } as const;
-const { scenarios } = createFeature(source, schema, { retries: 'Retries' });
-let acquired = 0;
+import { loadFeatureFromText } from '../../src/effect-runtime.ts';
 let attempts = 0;
-let continued = false;
-run(scenarios.retries.given('a resource')(() => ({ id: ++acquired, value: 0 }))
-  .when('it fails once')(state => {
-    expect(state).toEqual({ id: 1, value: 0 });
-    if (++attempts === 1) throw new Error('INTENTIONAL_RETRY_FAILURE');
-    return { ...state, value: 1 };
-  })
-  .then('continues')(state => {
-    expect(state).toEqual({ id: 1, value: 1 });
-    expect(attempts).toBe(2);
-    continued = true;
-  }));
-afterAll(() => {
-  expect(attempts).toBe(2);
-  expect(continued).toBe(true);
-  expect(acquired).toBe(1);
-});
+const seen: number[] = [];
+loadFeatureFromText('Feature: Retry\n Scenario: Retries\n  Given a counter\n  When fails once\n  Then continues\n')
+  .scenario('Retries').given('a counter')(() => ({ count: 1 }))
+    .when('fails once')((context) => {
+      const count = context.count as number;
+      seen.push(count);
+      if (++attempts === 1) throw new Error('RETRY_ONCE');
+      return { count: count + 1 };
+    })
+    .then('continues')((context) => { expect(context.count).toBe(2); })
+  .run();
+afterAll(() => { expect(seen).toEqual([1, 1]); });

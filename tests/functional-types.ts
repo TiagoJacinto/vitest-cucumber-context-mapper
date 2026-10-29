@@ -1,32 +1,32 @@
-// Checked through the real content mapper; this module is not executed by Vitest.
+// These contracts compile through the real .feature content mapper.
 import { z } from 'zod';
 import { Bdd } from 'vitest-cucumber-context-mapper/bdd';
-import { scenarios } from './runtime-assets/compiler.feature';
-type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
-const afterGiven = scenarios.buyAnItem.given('the basket total is 12.5')(() => 12.5);
-const afterWhen = afterGiven.when('checkout is calculated')(value => {
-  const exact: Equal<typeof value, number> = true;
-  void exact;
-  return { total: value };
-});
-const plan = afterWhen.then('the order total is 12.5')(value => {
-  const exact: Equal<typeof value, { total: number }> = true;
-  void exact;
-});
-const firstMethodIsGiven: Equal<keyof typeof scenarios.buyAnItem, 'given'> = true;
-const secondMethodIsWhen: Equal<keyof typeof afterGiven, 'when'> = true;
-const thirdMethodIsThen: Equal<keyof typeof afterWhen, 'then'> = true;
-const exactKeyMatchesAlias: Equal<typeof scenarios['Buy an item'], typeof scenarios.buyAnItem> = true;
-void [plan, firstMethodIsGiven, secondMethodIsWhen, thirdMethodIsThen, exactKeyMatchesAlias];
-type FeatureModule = typeof import('./runtime-assets/compiler.feature');
-const scenarioName: keyof FeatureModule['scenarios'] = 'Buy an item';
-// @ts-expect-error Scenario aliases are derived from the feature source.
-const unknownScenario: keyof FeatureModule['scenarios'] = 'Unknown scenario';
-void [scenarioName, unknownScenario];
+import { feature } from './runtime-assets/compiler.feature';
+const start = feature.scenario('Buy an item');
+const afterGiven = start.given('the basket total is 12.5')(() => ({ total: 12.5 }));
+const afterWhen = afterGiven.when('checkout is calculated')(({ total }) => ({ order: { total } }));
+afterWhen.then('the order total is 12.5')(({ total, order }) => {
+  const values: number[] = [total, order.total];
+  void values;
+}).run();
 const total = Bdd.state(z.coerce.number());
-const decodedCapture = Bdd.gen(function* () {
-  const actual: number = yield* total.actual;
-  const expected: number = yield* total.expected;
-  return actual + expected;
+start.given`the basket total is ${total}`((context, decoded, inputs) => {
+  const empty: {} = context;
+  const number: number = decoded;
+  void [empty, number, inputs.test];
+  return { total: decoded };
 });
-void decodedCapture;
+// @ts-expect-error wrong keyword
+start.when('checkout is calculated');
+// @ts-expect-error wrong text
+start.given('wrong');
+// @ts-expect-error incomplete chain
+start.run();
+// @ts-expect-error incompatible replacement
+afterGiven.when('checkout is calculated')(() => ({ total: 'wrong' }));
+// @ts-expect-error primitive results do not contribute context
+start.given('the basket total is 12.5')(() => 12);
+// @ts-expect-error context is always first, even at the initial step
+start.given('the basket total is 12.5')((value: number) => ({ value }));
+// @ts-expect-error missing scenario
+feature.scenario('Missing');

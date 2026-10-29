@@ -1,14 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { generate } from '../dist/mapper/generate.js';
-import { scenarioAliases } from '../dist/mapper/scenario-aliases.js';
 
 const KEYWORDS = new Map([
-  ['given', 'Given'],
-  ['when', 'When'],
-  ['then', 'Then'],
-  ['and', 'And'],
-  ['but', 'But'],
+  ['given', 'given'],
+  ['when', 'when'],
+  ['then', 'then'],
+  ['and', 'and'],
+  ['but', 'but'],
+  ['step', 'step'],
 ]);
 
 function staticProperty(member) {
@@ -34,7 +34,6 @@ function loadFeature(fileName, source) {
     return {
       path,
       schema: generated.schema,
-      aliases: scenarioAliases(generated.schema.scenarioNames),
     };
   } catch {
     // TypeScript and the feature mapper report unresolved imports and invalid
@@ -76,24 +75,27 @@ function importedFeature(identifier, bindings, context) {
 // methods, wrappers, and chains passed through helpers are deliberately not
 // followed: doing so would require data-flow analysis, not AST ancestry.
 function fluentReceiver(node, bindings, context) {
-  if (node?.type === 'MemberExpression') {
-    const feature = importedFeature(node.object, bindings, context);
-    const name = staticProperty(node);
-    if (feature && name && Object.hasOwn(feature.aliases, name)) {
-      return { feature, scenarioName: feature.aliases[name], stepIndex: 0 };
-    }
-    return undefined;
+  const feature = importedFeature(node, bindings, context);
+  if (feature) return { feature, group: feature.schema, stepIndex: 0 };
+  if (node?.type !== 'CallExpression') return undefined;
+  const callee = node.callee;
+  if (callee.type === 'CallExpression') return fluentReceiver(callee, bindings, context);
+  const member = callee.type === 'TaggedTemplateExpression' ? callee.tag : callee;
+  if (member.type !== 'MemberExpression') return undefined;
+  const previous = fluentReceiver(member.object, bindings, context);
+  if (!previous) return undefined;
+  const method = staticProperty(member);
+  if (KEYWORDS.has(method)) return { ...previous, stepIndex: previous.stepIndex + 1 };
+  const name = node.arguments[0]?.type === 'Literal' ? node.arguments[0].value : undefined;
+  if (method === 'rule' && typeof name === 'string' && Object.hasOwn(previous.feature.schema.rules, name)) {
+    return { ...previous, group: previous.feature.schema.rules[name], steps: undefined, stepIndex: 0 };
   }
-  if (node?.type !== 'CallExpression' || node.arguments.length !== 1) return undefined;
-  const invocation = node.callee;
-  const method = invocation.type === 'TaggedTemplateExpression'
-    ? invocation.tag
-    : invocation.type === 'CallExpression' && invocation.arguments.length === 1
-      ? invocation.callee
-      : undefined;
-  if (method?.type !== 'MemberExpression' || !KEYWORDS.has(staticProperty(method))) return undefined;
-  const previous = fluentReceiver(method.object, bindings, context);
-  return previous ? { ...previous, stepIndex: previous.stepIndex + 1 } : undefined;
+  if (method === 'scenario' && typeof name === 'string' && Object.hasOwn(previous.group.scenarios, name)) {
+    return { ...previous, scenarioName: name, steps: previous.group.scenarios[name].steps, stepIndex: 0 };
+  }
+  if (method === 'background') return { ...previous, scenarioName: 'Background', steps: previous.group.background, stepIndex: 0 };
+  if (['use', 'beforeAll', 'beforeEach', 'afterEach', 'afterAll', 'only', 'skip'].includes(method)) return previous;
+  return undefined;
 }
 
 function taggedFluentChain(node, bindings, context) {
@@ -113,10 +115,9 @@ function taggedFluentChain(node, bindings, context) {
     current = tagged.tag.object;
   }
 
-  if (steps.length === 0 || current?.type !== 'MemberExpression') return undefined;
-  const name = staticProperty(current);
-  const feature = importedFeature(current.object, bindings, context);
-  if (!feature || !name || !Object.hasOwn(feature.aliases, name)) return undefined;
+  if (steps.length === 0) return undefined;
+  const resolved = fluentReceiver(current, bindings, context);
+  if (!resolved?.steps || resolved.stepIndex !== 0) return undefined;
   return { base: current, steps };
 }
 
@@ -149,7 +150,9 @@ function indentCallback(callback, callbackText, source, targetIndent, context, e
 
 function formatTaggedFluentChain(chain, context) {
   const source = context.sourceCode.text;
-  const baseIndent = lineIndent(source, chain.base.range[0]);
+  const baseOffset = chain.base.type === 'CallExpression' && chain.base.callee.type === 'MemberExpression'
+    ? chain.base.callee.property.range[0] : chain.base.range[0];
+  const baseIndent = lineIndent(source, baseOffset);
   const stepIndent = `${baseIndent}  `;
   const callbackIndent = `${stepIndent}  `;
   const eol = source.includes('\r\n') ? '\r\n' : '\n';
@@ -206,7 +209,7 @@ function featureImports(program, fileName) {
     for (const specifier of statement.specifiers) {
       if (specifier.type !== 'ImportSpecifier') continue;
       const imported = importedName(specifier);
-      if (imported === 'scenarios') scenarioBindings.set(specifier.local.name, { feature, specifier });
+      if (imported === 'feature') scenarioBindings.set(specifier.local.name, { feature, specifier });
     }
   }
 
@@ -234,23 +237,18 @@ const validStepTemplate = {
         if (!tag) return;
 
         const scenario = tag.scenario;
-        const scenarioSteps = scenario
-          ? tag.feature.schema.scenarios[scenario.scenarioName]?.steps ?? []
-          : undefined;
-        const expectedSteps = scenarioSteps
-          ? scenarioSteps.slice(scenario.stepIndex, scenario.stepIndex + 1)
-          : Object.values(tag.feature.schema.scenarios).flatMap(item => item.steps);
+        const expectedSteps = scenario.steps?.slice(scenario.stepIndex, scenario.stepIndex + 1) ?? [];
         const isValid = expectedSteps.some(step =>
-          step.keyword === tag.keyword && matchesStepTemplate(node.quasi.quasis, step.text));
+          (tag.keyword === 'step' || step.keyword === tag.keyword) && matchesStepTemplate(node.quasi.quasis, step.text));
         if (isValid) return;
 
         const expected = expectedSteps[0];
         context.report({
           node: node.quasi,
           message: scenario && expected
-            ? `Scenario ${JSON.stringify(scenario.scenarioName)}, step ${scenario.stepIndex + 1} must match ${expected.keyword} ${JSON.stringify(expected.text)}`
+            ? `Scenario ${JSON.stringify(scenario.scenarioName)}, step ${scenario.stepIndex + 1} must match ${expected.sourceKeyword} ${JSON.stringify(expected.text)}`
             : expected
-              ? `Step template does not match the feature step: ${expected.keyword} ${JSON.stringify(expected.text)}`
+              ? `Step template does not match the feature step: ${expected.sourceKeyword} ${JSON.stringify(expected.text)}`
             : `The feature has no ${tag.keyword} step matching this template`,
         });
       },

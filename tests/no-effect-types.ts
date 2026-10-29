@@ -1,44 +1,26 @@
-import type { StandardSchemaV1 } from '@standard-schema/spec';
-import { Bdd, createFeature, type ScenarioPlan } from '../src/effect-runtime.ts';
-const numberSchema: StandardSchemaV1<string, number> = {
-  '~standard': { version: 1, vendor: 'test', validate: value => typeof value === 'string' ? { value: Number(value) } : { issues: [{ message: 'string required' }] } },
-};
-const stringSchema: StandardSchemaV1<string, string> = {
-  '~standard': { version: 1, vendor: 'test', validate: value => typeof value === 'string' ? { value } : { issues: [{ message: 'string required' }] } },
-};
-const schema = { scenarioNames: ['flow'], scenarios: { flow: { examples: [], steps: [
-  { keyword: 'Given', text: 'value 2' }, { keyword: 'When', text: 'increment' }, { keyword: 'Then', text: 'equals 3' },
-] } } } as const;
-// Type-only examples are never called, so literal runtime validation does not matter.
-function contracts(start: ReturnType<typeof setup>) {
-  const total = Bdd.state(numberSchema);
-  const text = Bdd.state(stringSchema);
-  const { actual, expected } = total;
-  const prepared = start.given`value ${total}`(Bdd.identity);
-  const acted = prepared.when('increment')((previous: number) => Promise.resolve(previous + 1));
-  const done: ScenarioPlan = acted.then`equals ${total}`(Bdd.gen(function* () {
-    const a: number = yield* actual;
-    const e: number = yield* expected;
-    return a === e;
-  }));
-  void done;
-  // @ts-expect-error only the next keyword is exposed
-  start.when('increment');
-  // @ts-expect-error literal text must match the source
-  prepared.when('wrong');
-  // @ts-expect-error previous number cannot be treated as string
-  prepared.when('increment')((previous: string) => previous);
-  // @ts-expect-error actual requires number, previous output is string
-  prepared.when('increment')(() => 'bad').then`equals ${total}`(Bdd.gen(function* () { yield* actual; }));
-  // @ts-expect-error expected capture is not available in this literal step
-  prepared.when('increment')(Bdd.gen(function* () { yield* expected; }));
-  // @ts-expect-error incompatible capture type is absent even if a number capture exists
-  acted.then`equals ${total}`(Bdd.gen(function* () { yield* text.expected; }));
-  // @ts-expect-error first step has no previous state
-  start.given`value ${total}`(Bdd.gen(function* () { yield* actual; }));
-  // @ts-expect-error generator callbacks receive zero arguments
-  Bdd.gen(function* (previous: number) { yield* actual; return previous; });
-  acted.then`equals ${total}`(Bdd.gen(async function* () { return (yield* actual) === (yield* expected); }));
-}
-function setup() { return createFeature('', schema, { flow: 'flow' }).scenarios.flow; }
-void contracts;
+import { z } from 'zod';
+import { Bdd } from 'vitest-cucumber-context-mapper/bdd';
+import { feature } from './runtime-assets/compiler.feature';
+const number = Bdd.state(z.coerce.number());
+const context = Bdd.state(z.object({ total: z.number() }));
+const start = feature.scenario('Buy an item');
+const given = start.given`the basket total is ${number}`(Bdd.gen(function* () {
+  return { total: yield* number.expected };
+}));
+const when = given.when('checkout is calculated')(Bdd.gen(function* () {
+  const value = yield* context.actual;
+  return { total: value.total + 1 };
+}));
+when.then`the order total is ${number}`(Bdd.gen(async function* () {
+  const value = yield* context.actual;
+  const expected = yield* number.expected;
+  void [value, expected];
+}));
+// @ts-expect-error actual asks for a number, context is an object
+given.when('checkout is calculated')(Bdd.gen(function* () { yield* number.actual; }));
+// @ts-expect-error no capture exists in a literal step
+given.when('checkout is calculated')(Bdd.gen(function* () { yield* number.expected; }));
+// @ts-expect-error first step does not have the required context
+start.given`the basket total is ${number}`(Bdd.gen(function* () { yield* context.actual; }));
+// @ts-expect-error invalid requests
+Bdd.gen(function* () { yield 42; });

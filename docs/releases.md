@@ -38,7 +38,11 @@ declared per job; the repository default can remain read-only.
 
 ## Normal releases
 
-Use Conventional Commit titles when squash-merging PRs:
+Releases are automatic. Merging a releasable PR into `main` publishes a new
+version with no further action.
+
+Squash merges use the PR title as the commit subject. The **PR title** workflow
+requires a Conventional Commit title:
 
 - `fix: ...` creates a patch release, such as `0.1.0` to `0.1.1`.
 - `feat: ...` creates a minor release, such as `0.1.0` to `0.2.0`.
@@ -47,12 +51,16 @@ Use Conventional Commit titles when squash-merging PRs:
 - `chore: ...`, `docs: ...`, and other non-release commits do not independently
   create a release.
 
-Release Please maintains a release PR with the version and changelog changes.
-It explicitly dispatches CI for that branch, so the bot can use GitHub's built-in
-token. Merge the release PR when ready. The same workflow creates the GitHub
-release, validates its exact commit, and publishes the package to npm. Publishing
-occurs inside that workflow rather than relying on a second workflow triggered
-by a bot-created tag.
+On each push to `main`, the **Release** workflow:
+
+1. Runs Release Please, which opens a release PR with the version and changelog.
+2. Squash-merges that release PR immediately. It changes only the version and
+   changelog; the code was verified by the merged PR's CI.
+3. Runs Release Please again to create the tag and GitHub release.
+4. Runs `npm run verify:release` on the tagged commit, then publishes to npm.
+
+A merge made with GitHub's built-in token does not trigger another workflow run,
+so tagging and publishing happen inside the same run.
 
 The manifest records `0.1.0` as the initial manual release baseline. Existing
 history before the automation setup is excluded from version calculation.
@@ -72,6 +80,6 @@ version. The workflow checks that the tag matches `package.json`, points to the
 checked-out commit, belongs to `main`, and has a published GitHub release.
 If that version is already on npm, do not retry it: npm versions are immutable.
 
-Run **Release** with the tag input empty to refresh the release PR without a new
+Run **Release** with the tag input empty to release pending commits without a new
 push. See [Release Please](https://github.com/googleapis/release-please-action)
 for release PR behavior.

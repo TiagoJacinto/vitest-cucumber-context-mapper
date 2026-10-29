@@ -1,10 +1,30 @@
 {
   "compilerOptions": {
-    "target": "ES2024", "module": "NodeNext", "strict": true,
-    "noEmit": true, "allowImportingTsExtensions": true, "skipLibCheck": true,
+    "target": "ES2024",
+    "module": "NodeNext",
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
     "erasableSyntaxOnly": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "contentMappers": [{"package":"gherkin-content-mapper","extensions":[".feature"]}],
-  "include": ["mapper/**/*.ts", "src/**/*.ts", "example/**/*.ts", "tests/**/*.ts", "vitest.config.ts"]
+  "contentMappers": [
+    {
+      "package": "gherkin-content-mapper",
+      "extensions": [
+        ".feature"
+      ]
+    }
+  ],
+  "include": [
+    "mapper/**/*.ts",
+    "src/**/*.ts",
+    "example/**/*.ts",
+    "tests/**/*.ts",
+    "vitest.config.ts",
+    "vitest.browser.config.ts"
+  ]
 }

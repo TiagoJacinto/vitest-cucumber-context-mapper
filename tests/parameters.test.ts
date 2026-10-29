@@ -1,0 +1,32 @@
+import { expect, it } from 'vitest';
+import { Bdd } from '../src/effect-runtime.ts';
+it('decodes documented expression types through typed local capture values', async () => {
+  expect(await Bdd.string().decode('"Vue"')).toBe('Vue');
+  expect(await Bdd.string().decode("'Vue'")).toBe('Vue');
+  expect(await Bdd.number().decode('-3,25')).toBe(-3.25);
+  expect(await Bdd.int().decode('001')).toBe(1);
+  await expect(Bdd.int().decode('8.2')).rejects.toThrow();
+  expect(await Bdd.list().decode('Vue, Astro, Typescript')).toEqual(['Vue', 'Astro', 'Typescript']);
+  expect(await Bdd.list(';').decode('id;name;city')).toEqual(['id', 'name', 'city']);
+  expect((await Bdd.date().decode('2024-10-25')).getUTCMonth()).toBe(9);
+  expect(await Bdd.char().decode('🥐')).toBe('🥐');
+  await expect(Bdd.char().decode('two')).rejects.toThrow();
+  expect(await Bdd.word().decode('Vue')).toBe('Vue');
+  await expect(Bdd.word().decode('two words')).rejects.toThrow();
+  expect(await Bdd.any().decode('with nanostores')).toBe('with nanostores');
+  expect(await Bdd.email().decode('john@smith.com')).toBe('john@smith.com');
+  expect(await Bdd.boolean().decode('true')).toBe(true);
+  expect(await Bdd.boolean().decode('paper')).toBe(false);
+  expect(await Bdd.url().decode('redis://localhost')).toBe('redis://localhost');
+  expect(await Bdd.currency().decode('$2.5')).toEqual({ currency: 'USD', raw: '$2.5', value: 2.5 });
+  expect(await Bdd.currency().decode('3€')).toEqual({ currency: 'EUR', raw: '3€', value: 3 });
+  expect(await Bdd.currency().decode('EUR 1.234,56')).toEqual({ currency: 'EUR', raw: 'EUR 1.234,56', value: 1234.56 });
+});
+it('supports custom asynchronous transformers without stateful regex leakage', async () => {
+  const color = Bdd.parameter(/red|blue|yellow/g, async text => ({ color: text }));
+  expect(await color.decode('red')).toEqual({ color: 'red' });
+  expect(await color.decode('red')).toEqual({ color: 'red' });
+  await expect(color.decode('green')).rejects.toThrow();
+  const rejects = Bdd.parameter(/.*/, () => { throw new Error('transformer failure'); });
+  await expect(rejects.decode('x')).rejects.toThrow();
+});
