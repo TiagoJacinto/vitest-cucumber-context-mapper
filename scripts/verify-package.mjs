@@ -26,9 +26,10 @@ try {
   success(pack);
   const [packed] = JSON.parse(pack.output);
   assert.ok(packed.files.some(file => file.path === 'dist/mapper/server.js'));
-  assert.ok(!packed.files.some(file => file.path.startsWith('experiments/')));
+  assert.ok(!packed.files.some(file => /^(experiments|prototypes)\//.test(file.path)));
+  assert.ok(!packed.files.some(file => file.path.includes('scenario-aliases')));
   const dependencies = Object.fromEntries(
-    ['@amiceli/vitest-cucumber', 'zod', '@types/node', 'typescript', 'vite', 'vitest', 'oxlint']
+    ['zod', '@types/node', 'typescript', 'vite', 'vitest', 'oxlint']
       .map(name => [name, manifest.devDependencies[name]]),
   );
   dependencies[manifest.name] = `file:${join(packDirectory, packed.filename)}`;
@@ -60,17 +61,14 @@ export default defineConfig({ plugins: [gherkinFeaturePlugin()] });
 import { expect } from 'vitest';
 import { z } from 'zod';
 import { Bdd } from '${manifest.name}/bdd';
-import { run, scenarios } from './checkout.feature';
+import { feature } from './checkout.feature';
 const OrderTotal = Bdd.state(z.coerce.number());
-run(scenarios.buyAnItem
-  .given\`the basket total is \${OrderTotal}\`(Bdd.identity)
-  .when('checkout is calculated')(total => total)
-  .then\`the order total is \${OrderTotal}\`(Bdd.gen(function* () {
-    const actual = yield* OrderTotal.actual;
-    const expected = yield* OrderTotal.expected;
-    expect(actual).toBe(expected);
-    return actual;
-  })));
+feature.scenario('Buy an item')
+  .given\`the basket total is \${OrderTotal}\`((_, total) => ({ total }))
+  .when('checkout is calculated')(({ total }) => ({ total }))
+  .then\`the order total is \${OrderTotal}\`(({ total }, expected) => {
+    expect(total).toBe(expected);
+  }).run();
 `);
   success(execute('npm', ['install', '--no-audit', '--no-fund']));
   assert.equal(existsSync(join(consumer, 'node_modules/effect')), false, 'Effect must not be installed');
@@ -79,10 +77,22 @@ run(scenarios.buyAnItem
   const compile = () => execute(join(consumer, 'node_modules/.bin/tsc'), ['--noEmit', '--runExternalCode', '--pretty', 'false']);
   success(compile());
   console.log('Installed fluent feature: compiler exit 0');
+  success(execute(process.execPath, ['--input-type=module', '-e', `
+    import { parseFeature } from '${manifest.name}/gherkin';
+    if (parseFeature('Feature: Documentation\\n').name !== 'Documentation') throw new Error('Parser entry failed');
+  `]));
+  // Exercise the installed CLI and compile its complete scoped skeleton before removing
+  // the intentionally failing generated test from the runtime consumer.
+  writeFileSync(join(consumer, 'shopping.feature'), readFileSync(join(root, 'tests/runtime-assets/shopping.feature'), 'utf8'));
+  success(execute(process.execPath, [join(consumer, 'node_modules', manifest.name, 'scripts/generate-tests.mjs'), 'shopping.feature']));
+  success(compile());
+  rmSync(join(consumer, 'shopping.feature.test.ts'));
+  console.log('Installed parser and generated scoped skeleton: verified');
+
   const invalidPath = join(consumer, 'invalid-order.ts');
   writeFileSync(invalidPath, `
-import { run, scenarios } from './checkout.feature';
-run(scenarios.buyAnItem.when\`checkout is calculated\`(() => undefined));
+import { feature } from './checkout.feature';
+feature.scenario('Buy an item').when\`checkout is calculated\`(() => undefined);
 `);
   const invalid = compile();
   assert.equal(invalid.status, 2, invalid.output);

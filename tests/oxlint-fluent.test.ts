@@ -38,11 +38,11 @@ function lint(source: string) {
 }
 
 it('validates direct fluent tags, imported aliases, exact computed names and mixed plain calls', () => {
-  const result = lint(`import { scenarios as cases } from './steps.feature';
-  cases['Repeat given'].given\`the first value\`(callback)
+  const result = lint(`import { feature as cases } from './steps.feature';
+  cases.scenario('Repeat given').given\`the first value\`(callback)
     ['given']\`the second \${value}\`(callback)
     .when('the value changes')(callback).then\`the value is ready\`(callback);
-  cases.repeatGiven.given('the first value')(callback)
+  cases.scenario('Repeat given').given('the first value')(callback)
     .given\`the second value\`(Bdd.gen(function* () { yield* helper(); }))
     .when\`the value changes\`(callback).then\`the value is ready\`(callback);`);
   expect(result.status).toBe(0);
@@ -50,16 +50,16 @@ it('validates direct fluent tags, imported aliases, exact computed names and mix
 });
 
 it('rejects a bad static suffix in an interpolated tag', () => {
-  const result = lint(`import { scenarios } from './steps.feature';
-scenarios.repeatGiven.given\`the \${value} value typo\`(callback);`);
+  const result = lint(`import { feature } from './steps.feature';
+feature.scenario('Repeat given').given\`the \${value} value typo\`(callback);`);
   expect(result.status).toBe(1);
   expect(result.diagnostics).toHaveLength(1);
   expect(result.diagnostics[0]?.message).toContain('step 1 must match Given "the first value"');
 });
 
 it('checks the exact same-keyword step index and reports the template source position', () => {
-  const source = `import { scenarios } from './steps.feature';
-scenarios.repeatGiven.given\`the first value\`(callback)
+  const source = `import { feature } from './steps.feature';
+feature.scenario('Repeat given').given\`the first value\`(callback)
   .given\`the first value\`(callback);`;
   const result = lint(source);
   expect(result.status).toBe(1);
@@ -71,30 +71,30 @@ scenarios.repeatGiven.given\`the first value\`(callback)
 });
 
 it('does not confuse nested generator helpers or shadowed scenario bindings with the chain', () => {
-  const result = lint(`import { scenarios } from './steps.feature';
-scenarios.repeatGiven.given\`the first value\`(Bdd.gen(function* () {
+  const result = lint(`import { feature } from './steps.feature';
+feature.scenario('Repeat given').given\`the first value\`(Bdd.gen(function* () {
   yield* helper.given\`unrelated helper text\`(callback);
 })).given\`the second value\`(callback);
-function local(scenarios) { scenarios.repeatGiven.given\`unrelated local text\`(callback); }
-{ const scenarios = localBuilder; scenarios.repeatGiven.given\`local block text\`(callback); }`);
+function local(feature) { feature.scenario('Repeat given').given\`unrelated local text\`(callback); }
+{ const feature = localBuilder; feature.scenario('Repeat given').given\`local block text\`(callback); }`);
   expect(result.status).toBe(0);
   expect(result.diagnostics).toEqual([]);
 });
 
 it('deliberately skips indirect builders rather than guessing their scenario or index', () => {
-  const result = lint(`import { scenarios } from './steps.feature';
-const builder = scenarios.repeatGiven;
+  const result = lint(`import { feature } from './steps.feature';
+const builder = feature.scenario('Repeat given');
 builder.given\`unresolved indirect text\`(callback);
-const partial = scenarios.repeatGiven.given\`the first value\`(callback);
+const partial = feature.scenario('Repeat given').given\`the first value\`(callback);
 partial.given\`unresolved continuation\`(callback);`);
   expect(result.status).toBe(0);
   expect(result.diagnostics).toEqual([]);
 });
 
 it('does not accept text from another scenario or the wrong keyword', () => {
-  const result = lint(`import { scenarios } from './steps.feature';
-scenarios.repeatGiven.given\`another value\`(callback);
-scenarios.repeatGiven.when\`the first value\`(callback);`);
+  const result = lint(`import { feature } from './steps.feature';
+feature.scenario('Repeat given').given\`another value\`(callback);
+feature.scenario('Repeat given').when\`the first value\`(callback);`);
   expect(result.status).toBe(1);
   expect(result.diagnostics).toHaveLength(2);
   for (const diagnostic of result.diagnostics) {
@@ -110,14 +110,14 @@ it('formats fluent chains once and accepts the formatted result', () => {
     categories: { correctness: 'off' },
     rules: { 'gherkin-feature/format-fluent-chain': 'error' },
   }));
-  writeFileSync(filename, `import { scenarios } from './steps.feature';
-scenarios.repeatGiven.given\`the first value\`(callback).given\`the second value\`(callback);\n`);
+  writeFileSync(filename, `import { feature } from './steps.feature';
+feature.scenario('Repeat given').given\`the first value\`(callback).given\`the second value\`(callback);\n`);
   const run = (fix: boolean) => spawnSync(resolve(root, 'node_modules/.bin/oxlint'), [
     '--config', config, ...(fix ? ['--fix'] : []), filename,
   ], { encoding: 'utf8' });
   expect(run(true).status).toBe(0);
-  expect(readFileSync(filename, 'utf8')).toBe(`import { scenarios } from './steps.feature';
-scenarios.repeatGiven
+  expect(readFileSync(filename, 'utf8')).toBe(`import { feature } from './steps.feature';
+feature.scenario('Repeat given')
   .given\`the first value\`(callback)
   .given\`the second value\`(callback);\n`);
   expect(run(false).status).toBe(0);

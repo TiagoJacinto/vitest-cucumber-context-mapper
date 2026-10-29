@@ -56,11 +56,11 @@ server.on('exit', (code, signal) => {
 const rootUri = pathToFileURL(process.cwd() + '/').href;
 const uri = path => new URL(path, rootUri).href;
 const ordinaryExample = `import { expect } from 'vitest';
-import { run, scenarios } from './checkout.feature';
-run(scenarios.buyAnItem
-  .given('the basket total is 12.5')(() => 12.5)
-  .when('checkout is calculated')(total => total)
-  .then('the order total is 12.5')(total => { expect(total).toBe(12.5); }));
+import { feature } from './checkout.feature';
+feature.scenario('Buy an item')
+  .given('the basket total is 12.5')(() => ({ total: 12.5 }))
+  .when('checkout is calculated')(({ total }) => ({ total }))
+  .then('the order total is 12.5')(({ total }) => { expect(total).toBe(12.5); }).run();
 `;
 const positionAt = (text, offset) => {
   const before = text.slice(0, offset).split('\n');
@@ -102,11 +102,10 @@ try {
   const feature = readFileSync('example/checkout.feature', 'utf8');
   const builderHover = await request('textDocument/hover', {
     textDocument: { uri: uri('example/checkout.test.ts') },
-    position: positionAt(spec, spec.indexOf('.buyAnItem') + 2),
+    position: positionAt(spec, spec.indexOf('.scenario') + 2),
   });
-  assert.match(builderHover?.contents?.value ?? '', /buyAnItem/);
-  assert.match(builderHover?.contents?.value ?? '', /given|FluentScenario/);
-  assert.match(builderHover?.contents?.value ?? '', /FluentStepTag|FluentScenario/);
+  assert.match(builderHover?.contents?.value ?? '', /scenario/);
+  assert.match(builderHover?.contents?.value ?? '', /Buy an item/);
   console.log('scenario stage hover: ' + JSON.stringify(builderHover));
 
   const change = (path, version, text) => send({ method: 'textDocument/didChange', params: {
@@ -119,28 +118,28 @@ try {
     });
     return (Array.isArray(result) ? result : result?.items ?? []).map(item => item.label);
   };
-  const member = spec + '\nvoid scenarios.';
+  const member = spec + '\nvoid feature.scenario("';
   change('example/checkout.test.ts', 2, member);
-  assert.ok((await complete(member, member.length)).includes('buyAnItem'));
-  const stage = spec + '\nvoid scenarios.buyAnItem.';
+  assert.ok((await complete(member + '");', member.length)).some(label => label.includes('Buy an item')));
+  const stage = spec + '\nvoid feature.scenario("Buy an item").';
   change('example/checkout.test.ts', 3, stage);
   const stageCompletions = await complete(stage, stage.length);
   assert.ok(stageCompletions.includes('given'));
   assert.ok(!stageCompletions.includes('when'));
-  const literalPrefix = spec + '\nvoid scenarios.buyAnItem.given("';
+  const literalPrefix = spec + '\nvoid feature.scenario("Buy an item").given("';
   change('example/checkout.test.ts', 4, literalPrefix + '");');
   const givenCompletions = await complete(literalPrefix + '");', literalPrefix.length);
   assert.ok(givenCompletions.some(label => label.includes('the basket total is 12.5')));
   change('example/checkout.test.ts', 5, spec);
   console.log('consumer autocomplete: verified scenarios, initial given without when, and next Given literal');
 
-  const following = spec + '\nvoid scenarios.buyAnItem.given("the basket total is 12.5")(() => undefined).';
+  const following = spec + '\nvoid feature.scenario("Buy an item").given("the basket total is 12.5")(() => undefined).';
   change('example/checkout.test.ts', 6, following);
   const followingCompletions = await complete(following, following.length);
   assert.ok(followingCompletions.includes('when'));
   assert.ok(!followingCompletions.includes('given'));
   assert.ok(!followingCompletions.includes('then'));
-  const wrongOrder = spec + '\nscenarios.buyAnItem.when`checkout is calculated`(() => undefined);';
+  const wrongOrder = spec + '\nfeature.scenario("Buy an item").when`checkout is calculated`(() => undefined);';
   change('example/checkout.test.ts', 7, wrongOrder);
   const orderDiagnostic = await request('textDocument/diagnostic', { textDocument: { uri: uri('example/checkout.test.ts') } });
   assert.ok(orderDiagnostic.items.some(item => item.code === 2339 && /Property 'when' does not exist/.test(item.message)));
@@ -151,16 +150,16 @@ try {
 
   change('example/checkout.feature', 2, feature.replace('Buy an item', 'Purchase an item'));
   const renamed = await request('textDocument/diagnostic', { textDocument: { uri: uri('example/checkout.test.ts') } });
-  assert.ok(renamed.items.some(item => /buyAnItem/.test(item.message)));
+  assert.ok(renamed.items.some(item => /Buy an item/.test(item.message)));
   console.log('in-memory scenario rename: consumer diagnostic verified');
 
-  change('example/checkout.feature', 3, 'Feature: F\n Scenario: Buy an item\n Scenario: buyAnItem\n');
+  change('example/checkout.feature', 3, 'Feature: F\n Scenario: Buy an item\n Scenario: Buy an item\n');
   const collision = await request('textDocument/diagnostic', { textDocument: { uri: uri('example/checkout.feature') } });
-  assert.ok(collision.items.some(item => item.source === 'gherkin' && item.code === 3));
+  assert.ok(collision.items.some(item => item.source === 'gherkin' && item.code === 2));
   change('example/checkout.feature', 4, feature);
   const recovered = await request('textDocument/diagnostic', { textDocument: { uri: uri('example/checkout.test.ts') } });
   assert.deepEqual(recovered.items, []);
-  console.log('alias collision: mapped diagnostic and server recovery verified');
+  console.log('duplicate scenario: mapped diagnostic and server recovery verified');
   // Prove didChange reaches the mapper, rather than merely receiving empty diagnostics.
   change('example/checkout.feature', 5, 'Feature: Broken\n Scenario: bad\n  Given ok\n  Examples:\n   | x |\n   | 1 | 2 |\n');
   const malformed = await request('textDocument/diagnostic', { textDocument: { uri: uri('example/checkout.feature') } });
