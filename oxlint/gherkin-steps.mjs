@@ -98,95 +98,6 @@ function fluentReceiver(node, bindings, context) {
   return undefined;
 }
 
-function taggedFluentChain(node, bindings, context) {
-  const steps = [];
-  let current = node;
-
-  while (current?.type === 'CallExpression' && current.arguments.length === 1) {
-    const tagged = current.callee;
-    if (tagged?.type !== 'TaggedTemplateExpression' || tagged.tag.type !== 'MemberExpression') break;
-    if (!KEYWORDS.has(staticProperty(tagged.tag))) break;
-
-    steps.unshift({
-      tagged,
-      receiver: tagged.tag.object,
-      callback: current.arguments[0],
-    });
-    current = tagged.tag.object;
-  }
-
-  if (steps.length === 0) return undefined;
-  const resolved = fluentReceiver(current, bindings, context);
-  if (!resolved?.steps || resolved.stepIndex !== 0) return undefined;
-  return { base: current, steps };
-}
-
-function lineIndent(source, offset) {
-  const lineStart = source.lastIndexOf('\n', offset - 1) + 1;
-  return source.slice(lineStart, offset).match(/^[\t ]*/)?.[0] ?? '';
-}
-
-function indentCallback(callback, callbackText, source, targetIndent, context, eol) {
-  const sourceIndent = lineIndent(source, callback.range[0]);
-  const tokens = context.sourceCode.getTokens(callback, { includeComments: true });
-  const lines = callbackText.split(/\r\n|\n/);
-  let offset = callback.range[0];
-
-  return lines.map((line, index) => {
-    if (index === 0) {
-      offset += line.length + eol.length;
-      return `${targetIndent}${line.trimStart()}`;
-    }
-
-    const protectedLine = tokens.some(token => token.range[0] <= offset && offset < token.range[1]);
-    const leading = line.match(/^[\t ]*/)?.[0] ?? '';
-    const result = !line.trim() || protectedLine
-      ? line
-      : `${targetIndent}${leading.startsWith(sourceIndent) ? leading.slice(sourceIndent.length) : leading}${line.slice(leading.length)}`;
-    offset += line.length + eol.length;
-    return result;
-  }).join(eol);
-}
-
-function formatTaggedFluentChain(chain, context) {
-  const source = context.sourceCode.text;
-  const baseOffset = chain.base.type === 'CallExpression' && chain.base.callee.type === 'MemberExpression'
-    ? chain.base.callee.property.range[0] : chain.base.range[0];
-  const baseIndent = lineIndent(source, baseOffset);
-  const stepIndent = `${baseIndent}  `;
-  const callbackIndent = `${stepIndent}  `;
-  const eol = source.includes('\r\n') ? '\r\n' : '\n';
-  let formatted = context.sourceCode.getText(chain.base);
-
-  for (const step of chain.steps) {
-    const callbackText = context.sourceCode.getText(step.callback);
-    const methodText = source.slice(step.receiver.range[1], step.tagged.range[1]).trimStart();
-    const callOpen = source.slice(step.tagged.range[1], step.callback.range[0]).trimEnd();
-
-    if (callbackText.includes('\n') || callbackText.includes('\r')) {
-      const indented = indentCallback(step.callback, callbackText, source, callbackIndent, context, eol);
-      formatted += `${eol}${stepIndent}${methodText}${callOpen}${eol}${indented},${eol}${stepIndent})`;
-    } else {
-      formatted += `${eol}${stepIndent}${methodText}${callOpen}${callbackText})`;
-    }
-  }
-
-  return formatted;
-}
-
-function isFluentReceiver(node) {
-  const method = node.parent;
-  const tagged = method?.parent;
-  const call = tagged?.parent;
-  return method?.type === 'MemberExpression'
-    && method.object === node
-    && KEYWORDS.has(staticProperty(method))
-    && tagged?.type === 'TaggedTemplateExpression'
-    && tagged.tag === method
-    && call?.type === 'CallExpression'
-    && call.callee === tagged;
-}
-
 function stepTag(node, scenarioBindings, context) {
   if (node.tag.type !== 'MemberExpression') return undefined;
   const keyword = KEYWORDS.get(staticProperty(node.tag));
@@ -256,10 +167,80 @@ const validStepTemplate = {
   },
 };
 
+// Flattens `root.a(...).b\`...\`(...)(...)` into its root and ordered links.
+// Each link keeps the member that names it and the offset where it ends.
+function chainLinks(node) {
+  const links = [];
+  let current = node;
+
+  while (current?.type === 'CallExpression') {
+    const callee = current.callee;
+    let member;
+    if (callee.type === 'MemberExpression') member = callee;
+    else if (callee.type === 'TaggedTemplateExpression' && callee.tag.type === 'MemberExpression') member = callee.tag;
+    else if (callee.type === 'CallExpression' && callee.callee.type === 'MemberExpression') member = callee.callee;
+    else break;
+
+    links.unshift({ member, end: current.range[1] });
+    current = member.object;
+  }
+
+  return { root: current, links };
+}
+
+function isChainPart(node) {
+  const parent = node.parent;
+  return (parent?.type === 'MemberExpression' && parent.object === node)
+    || (parent?.type === 'CallExpression' && parent.callee === node);
+}
+
+function lineIndent(source, offset) {
+  const lineStart = source.lastIndexOf('\n', offset - 1) + 1;
+  return source.slice(lineStart, offset).match(/^[\t ]*/)?.[0] ?? '';
+}
+
+// Shift continuation lines by the same amount as their link's first line.
+// Template literal lines are kept as written, because their whitespace is data.
+function shiftLines(text, offset, delta, tokens) {
+  let lineOffset = offset;
+  return text.split('\n').map((line, index) => {
+    const start = lineOffset;
+    lineOffset += line.length + 1;
+    const inTemplate = tokens.some(token => token.type === 'Template' && token.range[0] < start && start < token.range[1]);
+    if (index === 0 || !line.trim() || inTemplate) return line;
+    if (delta >= 0) return `${' '.repeat(delta)}${line}`;
+    const leading = line.match(/^[\t ]*/)[0].length;
+    return line.slice(Math.min(leading, -delta));
+  }).join('\n');
+}
+
+// Step links (Given, When, Then, And, But, Step) sit one level under their scenario.
+// Structural links (feature, scenario, rule, background, run) sit one level under the root.
+function formatChain(node, root, links, context) {
+  const source = context.sourceCode.text;
+  const eol = source.includes('\r\n') ? '\r\n' : '\n';
+  const tokens = context.sourceCode.getTokens(node, { includeComments: true });
+  const baseIndent = lineIndent(source, node.range[0]);
+  let formatted = context.sourceCode.getText(root);
+
+  for (const link of links) {
+    const isStep = KEYWORDS.has(staticProperty(link.member));
+    const indent = `${baseIndent}${isStep ? '    ' : '  '}`;
+    const start = link.member.object.range[1];
+    const segment = source.slice(start, link.end);
+    const dotOffset = start + segment.length - segment.trimStart().length;
+    const delta = indent.length - lineIndent(source, dotOffset).length;
+    const text = shiftLines(source.slice(dotOffset, link.end), dotOffset, delta, tokens);
+    formatted += `${eol}${indent}${text}`;
+  }
+
+  return formatted;
+}
+
 const formatFluentChain = {
   meta: {
     type: 'layout',
-    docs: { description: 'Format tagged fluent steps from an imported Gherkin feature' },
+    docs: { description: 'Put each link of an imported Gherkin feature chain on its own line' },
     fixable: 'code',
     schema: [],
   },
@@ -274,19 +255,20 @@ const formatFluentChain = {
         scenarioBindings = featureImports(program, context.filename);
       },
       CallExpression(node) {
-        if (isFluentReceiver(node)) return;
-        const chain = taggedFluentChain(node, scenarioBindings, context);
-        if (!chain) return;
+        if (isChainPart(node)) return;
+        const { root, links } = chainLinks(node);
+        if (!links.some(link => KEYWORDS.has(staticProperty(link.member)))) return;
+        if (!importedFeature(root, scenarioBindings, context)) return;
 
         if (context.sourceCode.getAllComments().some(comment =>
-          comment.range[0] >= chain.base.range[0] && comment.range[1] <= node.range[1])) return;
+          comment.range[0] >= node.range[0] && comment.range[1] <= node.range[1])) return;
 
-        const formatted = formatTaggedFluentChain(chain, context);
+        const formatted = formatChain(node, root, links, context);
         if (formatted === context.sourceCode.getText(node)) return;
 
         context.report({
           node,
-          message: 'Put each tagged fluent step on its own line',
+          message: 'Put each feature chain link on its own line',
           fix(fixer) {
             return fixer.replaceText(node, formatted);
           },

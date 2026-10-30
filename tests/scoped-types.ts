@@ -1,6 +1,8 @@
 import { feature } from './runtime-assets/shopping.feature';
 import { Bdd, defineStep } from 'vitest-cucumber-context-mapper/bdd';
-const root = feature.background().given('an empty basket')(() => ({ basket: { count: 0 } }));
+const root = feature
+  .background()
+    .given('an empty basket')(() => ({ basket: { count: 0 } }));
 const members = root.rule('Members').background().when('a member account is prepared')(() => ({ member: { id: 1 } }));
 const apple = members.scenario('Buy an apple').when('I add an apple')(() => ({ order: 1 })).then('the discount applies')(() => {});
 const pears = apple.scenario('Buy more fruit');
@@ -55,8 +57,15 @@ const custom = defineStep('favorite {color}', (_, value) => {
   const decoded: { color: string } = value; return { decoded };
 }, { color: Bdd.parameter(/red|blue/, color => ({ color })) });
 void custom;
-const skippedSetup = feature.background().given('an empty basket')(() => ({ basket: 1 })).skip();
+const skippedSetup = feature
+  .background()
+    .given('an empty basket')(() => ({ basket: 1 }))
+  .skip();
 // @ts-expect-error skipped Background output is unavailable
 skippedSetup.rule('Guests').scenario('Buy an apple').when('I add an apple')(({ basket }) => ({ basket }));
-// @ts-expect-error completed Background cannot be focused
-feature.rule('Members').background().when('a member account is prepared')(() => ({})).only();
+feature
+  .rule('Members')
+  .background()
+    .when('a member account is prepared')(() => ({}))
+  // @ts-expect-error completed Background cannot be focused
+  .only();

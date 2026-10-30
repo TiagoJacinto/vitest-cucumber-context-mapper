@@ -4,8 +4,11 @@ import { Bdd, loadFeatureFromText, defineStep } from 'vitest-cucumber-context-ma
 import { z } from 'zod';
 const seen: string[] = [];
 const value = Bdd.state(z.string());
-feature.scenario('Runs').given('selected')(() => { seen.push('selected'); })
-  .rule('Filtered rule').scenario('Rows')
+feature
+  .scenario('Runs')
+    .given('selected')(() => { seen.push('selected'); })
+  .rule('Filtered rule')
+  .scenario('Rows')
     .given`value ${value}`((_, value) => { seen.push(value); })
   .run({ includeTags: [['@feature', '@included']], excludeTags: ['@excluded', '@ignore'] });
 let inline = false;
