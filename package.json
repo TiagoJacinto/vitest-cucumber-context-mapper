@@ -1,6 +1,6 @@
 {
   "name": "vitest-cucumber-context-mapper",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Type-safe Gherkin scenarios for Vitest with functions, generators and Standard Schema",
   "repository": {
     "type": "git",
