@@ -84,6 +84,7 @@
     "@types/node": "24.10.0",
     "@vitest/browser-playwright": "5.0.5",
     "gherkin-content-mapper": "file:./mapper",
+    "oxfmt": "0.75.0",
     "oxlint": "1.89.0",
     "playwright": "1.64.1",
     "typescript": "7.1.0-dev.20261023.1",

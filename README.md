@@ -131,7 +131,24 @@ runtime validates it, and the optional Oxlint plugin checks direct chains:
 
 The syntax-based rule follows direct Feature/Rule/Background/Scenario chains and
 import aliases. It skips stored partial builders and helper-returned builders.
-Use `oxlint --fix` for tagged-chain formatting. The repository pins Oxlint **1.89.0**.
+
+`format-fluent-chain` puts the chain in this layout, run with `oxlint --fix`:
+
+```ts
+feature
+  .scenario('Buy an item')
+    .given`the basket total is ${OrderTotal}`((_, total) => ({ total }))
+    .when('checkout is calculated')(({ total }) => ({ order: { total } }))
+    .then`the order total is ${OrderTotal}`(({ order }, expected) => {
+      expect(order.total).toBe(expected);
+    })
+  .run();
+```
+
+Chains with no step (Given, When, Then, And, But, Step) are left alone. A chain
+with a comment is also left alone. Callback bodies keep their indentation relative
+to their step line, so a badly indented body stays badly indented. The repository
+pins Oxlint **1.89.0**.
 
 ## Test scaffolding and documentation
 
