@@ -48,8 +48,11 @@ import { gherkinFeaturePlugin } from '${manifest.name}/vite';
 export default defineConfig({ plugins: [gherkinFeaturePlugin()] });
 `);
   writeFileSync(join(consumer, '.oxlintrc.json'), JSON.stringify({
-    jsPlugins: [`./node_modules/${manifest.name}/oxlint/gherkin-steps.mjs`],
-    rules: { 'gherkin-feature/valid-step-template': 'error' },
+    jsPlugins: [`${manifest.name}/oxlint`],
+    rules: {
+      'gherkin-feature/valid-step-template': 'error',
+      'gherkin-feature/format-fluent-chain': 'error',
+    },
   }));
   writeFileSync(join(consumer, 'checkout.feature'), `Feature: Checkout
  Scenario: Buy an item
@@ -57,18 +60,26 @@ export default defineConfig({ plugins: [gherkinFeaturePlugin()] });
   When checkout is calculated
   Then the order total is 12.5
 `);
-  writeFileSync(join(consumer, 'checkout.test.ts'), `
+  const header = `
 import { expect } from 'vitest';
 import { z } from 'zod';
 import { Bdd } from '${manifest.name}/bdd';
 import { feature } from './checkout.feature';
 const OrderTotal = Bdd.state(z.coerce.number());
-feature.scenario('Buy an item')
-  .given\`the basket total is \${OrderTotal}\`((_, total) => ({ total }))
-  .when('checkout is calculated')(({ total }) => ({ total }))
-  .then\`the order total is \${OrderTotal}\`(({ total }, expected) => {
-    expect(total).toBe(expected);
-  }).run();
+`;
+  const formatted = `${header}feature
+  .scenario('Buy an item')
+    .given\`the basket total is \${OrderTotal}\`((_, total) => ({ total }))
+    .when('checkout is calculated')(({ total }) => ({ total }))
+    .then\`the order total is \${OrderTotal}\`(({ total }, expected) => {
+      expect(total).toBe(expected);
+    })
+  .run();
+`;
+  writeFileSync(join(consumer, 'checkout.test.ts'), formatted);
+  writeFileSync(join(consumer, 'unformatted.ts'), `${header}feature.scenario('Buy an item').given\`the basket total is \${OrderTotal}\`((_, total) => ({ total })).when('checkout is calculated')(({ total }) => ({ total })).then\`the order total is \${OrderTotal}\`(({ total }, expected) => {
+  expect(total).toBe(expected);
+}).run();
 `);
   success(execute('npm', ['install', '--no-audit', '--no-fund']));
   assert.equal(existsSync(join(consumer, 'node_modules/effect')), false, 'Effect must not be installed');
@@ -105,6 +116,12 @@ feature.scenario('Buy an item').when\`checkout is calculated\`(() => undefined);
   console.log(vitest.output.trim());
   const lint = file => execute(join(consumer, 'node_modules/.bin/oxlint'), ['--deny-warnings', file]);
   success(lint('checkout.test.ts'));
+  const unformatted = lint('unformatted.ts');
+  assert.equal(unformatted.status, 1, unformatted.output);
+  assert.match(unformatted.output, /format-fluent-chain/);
+  success(execute(join(consumer, 'node_modules/.bin/oxlint'), ['--fix', 'unformatted.ts']));
+  assert.equal(readFileSync(join(consumer, 'unformatted.ts'), 'utf8'), formatted);
+  console.log('Installed Oxlint formatter: one-line chain fails, --fix writes the layered chain');
   const example = readFileSync(join(consumer, 'checkout.test.ts'), 'utf8');
   writeFileSync(join(consumer, 'invalid-template.ts'), example.replace(
     'the order total is ${OrderTotal}`', 'the order total is ${OrderTotal} s`',

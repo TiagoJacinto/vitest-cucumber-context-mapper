@@ -116,8 +116,18 @@ content mappers are active. Restart the TypeScript server after changing mapper
 implementation code. Interactive editor activation depends on the installed
 extension; the headless LSP probe verifies completion, hover and live diagnostics.
 
-TypeScript cannot preserve interpolated tagged-template text as a literal. The
-runtime validates it, and the optional Oxlint plugin checks direct chains:
+## Oxlint
+
+TypeScript cannot preserve interpolated tagged-template text as a literal, so the
+runtime validates it. The optional Oxlint plugin checks direct chains.
+
+Install Oxlint in your project. The plugin does not install it:
+
+```sh
+npm install -D oxlint@1.89.0
+```
+
+The plugin was tested with Oxlint **1.89.0**. Add the plugin to `.oxlintrc.json`:
 
 ```json
 {
@@ -129,10 +139,12 @@ runtime validates it, and the optional Oxlint plugin checks direct chains:
 }
 ```
 
-The syntax-based rule follows direct Feature/Rule/Background/Scenario chains and
-import aliases. It skips stored partial builders and helper-returned builders.
+Run `npx oxlint` to report problems. The syntax-based rules follow direct
+Feature/Rule/Background/Scenario chains and import aliases. They skip stored partial
+builders and helper-returned builders.
 
-`format-fluent-chain` puts the chain in this layout, run with `oxlint --fix`:
+Run `npx oxlint --fix` to apply `format-fluent-chain`. It puts the chain in this
+layout:
 
 ```ts
 feature
@@ -147,8 +159,7 @@ feature
 
 Chains with no step (Given, When, Then, And, But, Step) are left alone. A chain
 with a comment is also left alone. Callback bodies keep their indentation relative
-to their step line, so a badly indented body stays badly indented. The repository
-pins Oxlint **1.89.0**.
+to their step line, so a badly indented body stays badly indented.
 
 ## Test scaffolding and documentation
 
